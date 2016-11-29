@@ -120,10 +120,9 @@ class Octaveh5(object):
 
         for key, val in iter(dict(gr_level2).items()):
             data_dict[str(key)] = val.items()[1][1].value
-
             if np.isscalar(data_dict[str(key)]) == False:
                 if sys.version_info[0] < 3:
-                    data_dict[str(key)] = "".join(str(item) for item in data_dict[str(key)])
+                    data_dict[str(key)] = "".join(chr(item) for item in data_dict[str(key)])
                 else:
                     data_dict[str(key)] = "".join(chr(item) for item in data_dict[str(key)])
 
@@ -175,9 +174,9 @@ class Octaveh5(object):
             if type(data_dict[ftparams]) == str:
                 group_l3.create_dataset("type", (), data=np.string_('sq_string'), dtype="|S10")
                 if self.octave_targetted_version < 3.8:
-                    group_l3.create_dataset("value", data=np.string_(data_dict[ftparams] + '0'))
+                    group_l3.create_dataset("value", data=np.string_(data_dict[ftparams].encode('UTF-8') + '0'))
                 else:
-                    group_l3.create_dataset("value", data=np.string_(data_dict[ftparams]))
+                    group_l3.create_dataset("value", data=np.string_(data_dict[ftparams].encode('UTF-8')))
             else:
                 group_l3.create_dataset("type", (), data=np.string_('scalar'), dtype="|S7")
                 group_l3.create_dataset("value", data=data_dict[ftparams])
