@@ -51,6 +51,7 @@ Here is an example of a simple read and write :
 import logging
 logger = logging.getLogger(__name__)
 import numpy as np
+import sys
 
 try:
     import h5py
@@ -118,16 +119,37 @@ class Octaveh5(object):
             return None
 
         for key, val in iter(dict(gr_level2).items()):
-            data_dict[str(key)] = list(val.items())[1][1].value
+            data_dict[str(key)] = val.items()[1][1].value
 
-            if list(val.items())[0][1].value != np.string_('sq_string'):
-                data_dict[str(key)] = float(data_dict[str(key)])
-            else:
-                data_dict[str(key)] = data_dict[str(key)].decode('UTF-8')
+            if np.isscalar(data_dict[str(key)]) == False:
+                if sys.version_info[0] < 3:
+                    data_dict[str(key)] = "".join(str(item) for item in data_dict[str(key)])
+                else:
+                    data_dict[str(key)] = "".join(chr(item) for item in data_dict[str(key)])
+
+# V ok
+#            data_dict[k] = (v.items()[1])[1].value
+#            if np.isscalar(data_dict[k]) == False:
+#                aux = "".join(chr(item) for item in data_dict[k])
+#                data_dict[k] = aux
+
+# V silx 
+#            if type(data_dict[str(key)]) in (np.float64, np.float32):
+#                print(type(data_dict[str(key)]))
+#                print(str(key))
+#                print(data_dict[str(key)])
+#                data_dict[str(key)] = float(data_dict[str(key)])
+#            else:
+#                if sys.version_info[0] < 3:
+#                    data_dict[str(key)] = "".join(str(item) for item in data_dict[str(key)])
+#                else:
+#                    data_dict[str(key)] = "".join(chr(item) for item in data_dict[str(key)])
+
+#                data_dict[str(key)] = data_dict[str(key)].decode('UTF-8')
 
                 # In the case Octave have added an extra character at the end
-                if self.octave_targetted_version < 3.8:
-                    data_dict[str(key)] = data_dict[str(key)][:-1]
+#                if self.octave_targetted_version < 3.8:
+#                    data_dict[str(key)] = data_dict[str(key)][:-1]
 
         return data_dict
 
