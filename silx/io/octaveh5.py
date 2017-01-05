@@ -95,6 +95,7 @@ class Octaveh5(object):
 
             logger.info(reason)
             raise e
+            
 
     def get(self, struct_name):
         """Read octave equivalent structures in hdf5 file
@@ -122,12 +123,17 @@ class Octaveh5(object):
             if list(val.items())[0][1].value != np.string_('sq_string'):
                 data_dict[str(key)] = float(data_dict[str(key)])
             else:
-                if list(val.items())[0][1].value == np.string_('sq_string'):
-                    # in the case the string has been stored as an nd-array of char
-                    if type(data_dict[str(key)]) is np.ndarray:
-                        data_dict[str(key)] = "".join(chr(item) for item in data_dict[str(key)])
-                    else:
-                        data_dict[str(key)] = data_dict[str(key)].decode('UTF-8')
+                if type(data_dict[str(key)]) is np.ndarray:
+                    print(data_dict[str(key)].shape)                   
+                    if not (len(data_dict[str(key)].shape)< 2 or (len(data_dict[str(key)].shape)==2 and data_dict[str(key)].shape[1] ==1 )):
+                        raise ValueError('Unvalid shape for the parameter value of %s, can\'t interpret it to a string'%key)
+                    
+                    v = ""
+                    for ch in data_dict[str(key)].ravel():
+                        v += str(ch)
+                    data_dict[str(key)] = v
+                else:
+                    data_dict[str(key)] = data_dict[str(key)].decode('UTF-8')
 
                 # In the case Octave have added an extra character at the end
                 if self.octave_targetted_version < 3.8:
