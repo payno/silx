@@ -108,6 +108,9 @@ class Octaveh5(object):
             logger.info(info)
             return None
 
+        if not struct_name in self.file:
+            raise ValueError('The group %s doesn\'t exists in the given file' %struct_name)
+
         data_dict = {}
         grr = (list(self.file[struct_name].items())[1])[1]
         try:
