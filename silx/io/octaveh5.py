@@ -62,6 +62,8 @@ __authors__ = ["C. Nemoz", "H. Payno"]
 __license__ = "MIT"
 __date__ = "05/10/2016"
 
+class StructureNotExisting(Exception):
+    pass
 
 class Octaveh5(object):
     """This class allows communication between octave and python using hdf5 format.
@@ -115,6 +117,9 @@ class Octaveh5(object):
             reason = "no gr_level2"
             logger.info(reason)
             return None
+        except ValueError:
+            logger.info('No %s structure'% struct_name)
+            raise StructureNotExisting()
 
         for key, val in iter(dict(gr_level2).items()):
             data_dict[str(key)] = list(val.items())[1][1].value
