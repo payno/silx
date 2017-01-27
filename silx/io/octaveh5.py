@@ -62,6 +62,8 @@ __authors__ = ["C. Nemoz", "H. Payno"]
 __license__ = "MIT"
 __date__ = "05/10/2016"
 
+class StructureNotExisting(Exception):
+    pass
 
 class Octaveh5(object):
     """This class allows communication between octave and python using hdf5 format.
@@ -107,6 +109,9 @@ class Octaveh5(object):
             logger.info(info)
             return None
 
+        if not struct_name in self.file:
+            raise ValueError('The group %s doesn\'t exists in the given file' %struct_name)
+
         data_dict = {}
         grr = (list(self.file[struct_name].items())[1])[1]
         try:
@@ -121,19 +126,16 @@ class Octaveh5(object):
 
             if list(val.items())[0][1].value != np.string_('sq_string'):
                 data_dict[str(key)] = float(data_dict[str(key)])
-            elif list(val.items())[0][1].value == np.string_('sq_string'):
+            else:
                 # in the case the string has been stored as an nd-array of char
                 if type(data_dict[str(key)]) is np.ndarray:
                     data_dict[str(key)] = "".join(chr(item) for item in data_dict[str(key)])
                 else:
                     data_dict[str(key)] = data_dict[str(key)].decode('UTF-8')
+
                 # In the case Octave have added an extra character at the end
                 if self.octave_targetted_version < 3.8:
                     data_dict[str(key)] = data_dict[str(key)][:-1]
-
-            else:
-                # TODO: raise an error, type not manage for now
-                pass
 
         return data_dict
 
