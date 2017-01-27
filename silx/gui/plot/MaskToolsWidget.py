@@ -1,7 +1,7 @@
 # coding: utf-8
 # /*##########################################################################
 #
-# Copyright (c) 2016 European Synchrotron Radiation Facility
+# Copyright (c) 2017 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -49,6 +49,12 @@ from .. import icons, qt
 
 from silx.third_party.EdfFile import EdfFile
 from silx.third_party.TiffIO import TiffIO
+
+try:
+    import fabio
+except ImportError:
+    fabio = None
+
 
 _logger = logging.getLogger(__name__)
 
@@ -114,26 +120,38 @@ class Mask(qt.QObject):
         """Save current mask in a file
 
         :param str filename: The file where to save to mask
-        :param str kind: The kind of file to save in 'edf', 'tif', 'npy'
-        :return: True if save succeeded, False otherwise
+        :param str kind: The kind of file to save in 'edf', 'tif', 'npy',
+            or 'msk' (if FabIO is installed)
+        :raise Exception: Raised if the file writing fail
         """
         if kind == 'edf':
             edfFile = EdfFile(filename, access="w+")
             edfFile.WriteImage({}, self.getMask(copy=False), Append=0)
-            return True
 
         elif kind == 'tif':
             tiffFile = TiffIO(filename, mode='w')
             tiffFile.writeImage(self.getMask(copy=False), software='silx')
-            return True
 
         elif kind == 'npy':
             try:
                 numpy.save(filename, self.getMask(copy=False))
             except IOError:
-                return False
-            return True
-        return False
+                raise RuntimeError("Mask file can't be written")
+
+        elif kind == 'msk':
+            if fabio is None:
+                raise ImportError("Fit2d mask files can't be written: Fabio module is not available")
+            try:
+                data = self.getMask(copy=False)
+                image = fabio.fabioimage.FabioImage(data=data)
+                image = image.convert(fabio.fit2dmaskimage.Fit2dMaskImage)
+                image.save(filename)
+            except Exception:
+                _logger.debug("Backtrace", exc_info=True)
+                raise RuntimeError("Mask file can't be written")
+
+        else:
+            raise ValueError("Format '%s' is not supported" % kind)
 
     # History control
 
@@ -190,7 +208,7 @@ class Mask(qt.QObject):
 
         :param int level: Value of the mask to set to 0.
         """
-        assert level > 0 and level < 256
+        assert 0 < level < 256
         self._mask[self._mask == level] = 0
         self._notify()
 
@@ -218,7 +236,7 @@ class Mask(qt.QObject):
 
         :param int level: The level to invert.
         """
-        assert level > 0 and level < 256
+        assert 0 < level < 256
         masked = self._mask == level
         self._mask[self._mask == 0] = level
         self._mask[masked] = 0
@@ -236,7 +254,7 @@ class Mask(qt.QObject):
         :param int width:
         :param bool mask: True to mask (default), False to unmask.
         """
-        assert level > 0 and level < 256
+        assert 0 < level < 256
         selection = self._mask[max(0, row):row + height + 1,
                                max(0, col):col + width + 1]
         if mask:
@@ -465,7 +483,8 @@ class MaskToolsWidget(qt.QWidget):
         layout.addStretch(1)
         self.setLayout(layout)
 
-    def _hboxWidget(self, *widgets, **kwargs):
+    @staticmethod
+    def _hboxWidget(*widgets, **kwargs):
         """Place widgets in widget with horizontal layout
 
         :param widgets: Widgets to position horizontally
@@ -769,14 +788,19 @@ class MaskToolsWidget(qt.QWidget):
         self.maxLineEdit.setEnabled(False)
         form.addRow('Max:', self.maxLineEdit)
 
-        maskBtn = qt.QPushButton('Apply mask')
-        maskBtn.clicked.connect(self._maskBtnClicked)
-        form.addRow(maskBtn)
+        self.applyMaskBtn = qt.QPushButton('Apply mask')
+        self.applyMaskBtn.clicked.connect(self._maskBtnClicked)
+        self.applyMaskBtn.setEnabled(False)
+        form.addRow(self.applyMaskBtn)
 
-        self.thresholdWidget = qt.QWidget()
-        self.thresholdWidget.setLayout(form)
-        self.thresholdWidget.setEnabled(False)
-        layout.addWidget(self.thresholdWidget)
+        self.maskNanBtn = qt.QPushButton('Mask not finite values')
+        self.maskNanBtn.setToolTip('Mask Not a Number and infinite values')
+        self.maskNanBtn.clicked.connect(self._maskNotFiniteBtnClicked)
+        form.addRow(self.maskNanBtn)
+
+        thresholdWidget = qt.QWidget()
+        thresholdWidget.setLayout(form)
+        layout.addWidget(thresholdWidget)
 
         layout.addStretch(1)
 
@@ -898,38 +922,62 @@ class MaskToolsWidget(qt.QWidget):
         """Load a mask from an image file.
 
         :param str filename: File name from which to load the mask
-        :return: False on failure, True on success or a resized message
-                 when loading succeeded but shape of the image and the mask
-                 are different.
-        :rtype: bool or str
+        :raise Exception: An exception in case of failure
+        :raise RuntimeWarning: In case the mask was applied but with some
+            import changes to notice
         """
-        try:
-            mask = numpy.load(filename)
-        except IOError:
-            _logger.debug('Not a numpy file: %s', filename)
+        _, extension = os.path.splitext(filename)
+        extension = extension.lower()[1:]
+
+        if extension == "npy":
+            try:
+                mask = numpy.load(filename)
+            except IOError:
+                _logger.error("Can't load filename '%s'", filename)
+                _logger.debug("Backtrace", exc_info=True)
+                raise RuntimeError('File "%s" is not a numpy file.', filename)
+        elif extension == "edf":
             try:
                 mask = EdfFile(filename, access='r').GetData(0)
-            except Exception:
-                _logger.error('Error while opening image file\n'
-                              '%s', (sys.exc_info()[1]))
-                return False
+            except Exception as e:
+                _logger.error("Can't load filename %s", filename)
+                _logger.debug("Backtrace", exc_info=True)
+                raise e
+        elif extension == "msk":
+            if fabio is None:
+                raise ImportError("Fit2d mask files can't be read: Fabio module is not available")
+            try:
+                mask = fabio.open(filename).data
+            except Exception as e:
+                _logger.error("Can't load fit2d mask file")
+                _logger.debug("Backtrace", exc_info=True)
+                raise e
+        else:
+            msg = "Extension '%s' is not supported."
+            raise RuntimeError(msg % extension)
 
         effectiveMaskShape = self.setSelectionMask(mask, copy=False)
         if effectiveMaskShape is None:
-            return False
-        elif mask.shape != effectiveMaskShape:
-            return 'Mask was resized from %s to %s' % (
-                str(mask.shape), str(effectiveMaskShape))
-        else:
-            return True
+            return
+        if mask.shape != effectiveMaskShape:
+            msg = 'Mask was resized from %s to %s'
+            msg = msg % (str(mask.shape), str(effectiveMaskShape))
+            raise RuntimeWarning(msg)
 
     def _loadMask(self):
         """Open load mask dialog"""
         dialog = qt.QFileDialog(self)
         dialog.setWindowTitle("Load Mask")
         dialog.setModal(1)
-        dialog.setNameFilters(
-            ['EDF  *.edf', 'TIFF *.tif', 'NumPy binary file *.npy'])
+        filters = [
+            'EDF (*.edf)',
+            'TIFF (*.tif)',
+            'NumPy binary file (*.npy)',
+            # Fit2D mask is displayed anyway fabio is here or not
+            # to show to the user that the option exists
+            'Fit2D mask (*.msk)',
+        ]
+        dialog.setNameFilters(filters)
         dialog.setFileMode(qt.QFileDialog.ExistingFile)
         dialog.setDirectory(self.maskFileDir)
         if not dialog.exec_():
@@ -940,16 +988,19 @@ class MaskToolsWidget(qt.QWidget):
         dialog.close()
 
         self.maskFileDir = os.path.dirname(filename)
-        loaded = self.load(filename)
-        if not loaded:
-            msg = qt.QMessageBox(self)
-            msg.setIcon(qt.QMessageBox.Critical)
-            msg.setText("Cannot load mask from file.")
-            msg.exec_()
-        elif loaded is not True:
+        try:
+            self.load(filename)
+        except RuntimeWarning as e:
+            message = e.args[0]
             msg = qt.QMessageBox(self)
             msg.setIcon(qt.QMessageBox.Warning)
-            msg.setText(loaded)
+            msg.setText("Mask loaded but an operation was applied.\n" + message)
+            msg.exec_()
+        except Exception as e:
+            message = e.args[0]
+            msg = qt.QMessageBox(self)
+            msg.setIcon(qt.QMessageBox.Critical)
+            msg.setText("Cannot load mask from file. " + message)
             msg.exec_()
 
     def save(self, filename, kind):
@@ -957,17 +1008,24 @@ class MaskToolsWidget(qt.QWidget):
 
         :param str filename: The file where to save to mask
         :param str kind: The kind of file to save in 'edf', 'tif', 'npy'
-        :return: True if save succeeded, False otherwise
+        :raise Exception: Raised if the process fails
         """
-        return self._mask.save(filename, kind)
+        self._mask.save(filename, kind)
 
     def _saveMask(self):
         """Open Save mask dialog"""
         dialog = qt.QFileDialog(self)
         dialog.setWindowTitle("Save Mask")
         dialog.setModal(1)
-        dialog.setNameFilters(
-            ['EDF  *.edf', 'TIFF *.tif', 'NumPy binary file *.npy'])
+        filters = [
+            'EDF (*.edf)',
+            'TIFF (*.tif)',
+            'NumPy binary file (*.npy)',
+            # Fit2D mask is displayed anyway fabio is here or not
+            # to show to the user that the option exists
+            'Fit2D mask (*.msk)',
+        ]
+        dialog.setNameFilters(filters)
         dialog.setFileMode(qt.QFileDialog.AnyFile)
         dialog.setAcceptMode(qt.QFileDialog.AcceptSave)
         dialog.setDirectory(self.maskFileDir)
@@ -975,7 +1033,8 @@ class MaskToolsWidget(qt.QWidget):
             dialog.close()
             return
 
-        extension = dialog.selectedNameFilter().split()[-1][1:]
+        # convert filter name to extension name with the .
+        extension = dialog.selectedNameFilter().split()[-1][2:-1]
         filename = dialog.selectedFiles()[0]
         dialog.close()
 
@@ -994,10 +1053,12 @@ class MaskToolsWidget(qt.QWidget):
                 return
 
         self.maskFileDir = os.path.dirname(filename)
-        if not self.save(filename, extension[1:]):
+        try:
+            self.save(filename, extension[1:])
+        except Exception as e:
             msg = qt.QMessageBox(self)
             msg.setIcon(qt.QMessageBox.Critical)
-            msg.setText("Cannot save file %s\n" % filename)
+            msg.setText("Cannot save file %s\n%s" % (filename, e.args[0]))
             msg.exec_()
 
     def getCurrentMaskColor(self):
@@ -1017,7 +1078,7 @@ class MaskToolsWidget(qt.QWidget):
         :param int level: The mask level to highlight
         :param float alpha: Alpha level of mask in [0., 1.]
         """
-        assert level > 0 and level <= self._maxLevelNumber
+        assert 0 < level <= self._maxLevelNumber
 
         colors = numpy.empty((self._maxLevelNumber + 1, 4), dtype=numpy.float32)
 
@@ -1025,7 +1086,8 @@ class MaskToolsWidget(qt.QWidget):
         colors[:, :3] = self._defaultOverlayColor[:3]
 
         # check if some colors has been directly set by the user
-        colors[self._defaultColors==False, :3] = self._overlayColors[self._defaultColors==False, :3]
+        mask = numpy.equal(self._defaultColors, False)
+        colors[mask, :3] = self._overlayColors[mask, :3]
 
         # Set alpha
         colors[:, -1] = alpha / 2.
@@ -1041,7 +1103,9 @@ class MaskToolsWidget(qt.QWidget):
     def resetMaskColors(self, level=None):
         """Reset the mask color at the given level to be defaultColors
 
-        :param level: the index of the mask for which we want to reset the color. If none we will reset color for all masks.
+        :param level:
+            The index of the mask for which we want to reset the color.
+            If none we will reset color for all masks.
         """
         if level is None:
             self._defaultColors[level] = True
@@ -1054,7 +1118,9 @@ class MaskToolsWidget(qt.QWidget):
         """Set the masks color
 
         :param rgb: The rgb color
-        :param level: the index of the mask for which we want to change the color. If none set this color for all the masks
+        :param level:
+            The index of the mask for which we want to change the color.
+            If none set this color for all the masks
         """
         if level is None:
             self._overlayColors[:] = rgb
@@ -1078,13 +1144,15 @@ class MaskToolsWidget(qt.QWidget):
         self._updateInteractiveMode()
 
     def _pencilWidthChanged(self, width):
+
+        old = self.pencilSpinBox.blockSignals(True)
         try:
-            old = self.pencilSpinBox.blockSignals(True)
             self.pencilSpinBox.setValue(width)
         finally:
             self.pencilSpinBox.blockSignals(old)
+
+        old = self.pencilSlider.blockSignals(True)
         try:
-            old = self.pencilSlider.blockSignals(True)
             self.pencilSlider.setValue(width)
         finally:
             self.pencilSlider.blockSignals(old)
@@ -1209,12 +1277,24 @@ class MaskToolsWidget(qt.QWidget):
             doMask = self._isMasking()
             ox, oy = self._origin
             sx, sy = self._scale
+
+            height = int(abs(event['height'] / sy))
+            width = int(abs(event['width'] / sx))
+
+            row = int((event['y'] - oy) / sy)
+            if sy < 0:
+                row -= height
+
+            col = int((event['x'] - ox) / sx)
+            if sx < 0:
+                col -= width
+
             self._mask.updateRectangle(
                 level,
-                row=int((event['y'] - oy) / sy),
-                col=int((event['x'] - ox) / sx),
-                height=int(event['height'] / sy),
-                width=int(event['width'] / sx),
+                row=row,
+                col=col,
+                height=height,
+                width=width,
                 mask=doMask)
             self._mask.commit()
 
@@ -1222,7 +1302,7 @@ class MaskToolsWidget(qt.QWidget):
                 event['event'] == 'drawingFinished'):
             doMask = self._isMasking()
             # Convert from plot to array coords
-            vertices = event['points'] / self._scale - self._origin
+            vertices = (event['points'] - self._origin) / self._scale
             vertices = vertices.astype(numpy.int)[:, (1, 0)]  # (row, col)
             self._mask.updatePolygon(level, vertices, doMask)
             self._mask.commit()
@@ -1230,7 +1310,7 @@ class MaskToolsWidget(qt.QWidget):
         elif self._drawingMode == 'pencil':
             doMask = self._isMasking()
             # convert from plot to array coords
-            col, row = event['points'][-1] / self._scale - self._origin
+            col, row = (event['points'][-1] - self._origin) / self._scale
             col, row = int(col), int(row)
             brushSize = self.pencilSpinBox.value()
 
@@ -1259,16 +1339,19 @@ class MaskToolsWidget(qt.QWidget):
         if triggered:
             self.minLineEdit.setEnabled(True)
             self.maxLineEdit.setEnabled(False)
+            self.applyMaskBtn.setEnabled(True)
 
     def _betweenThresholdActionTriggered(self, triggered):
         if triggered:
             self.minLineEdit.setEnabled(True)
             self.maxLineEdit.setEnabled(True)
+            self.applyMaskBtn.setEnabled(True)
 
     def _aboveThresholdActionTriggered(self, triggered):
         if triggered:
             self.minLineEdit.setEnabled(False)
             self.maxLineEdit.setEnabled(True)
+            self.applyMaskBtn.setEnabled(True)
 
     def _thresholdActionGroupTriggered(self, triggeredAction):
         """Threshold action group listener."""
@@ -1277,8 +1360,11 @@ class MaskToolsWidget(qt.QWidget):
             for action in self.thresholdActionGroup.actions():
                 if action is not triggeredAction and action.isChecked():
                     action.setChecked(False)
-
-        self.thresholdWidget.setEnabled(triggeredAction.isChecked())
+        else:
+            # Disable min/max edit
+            self.minLineEdit.setEnabled(False)
+            self.maxLineEdit.setEnabled(False)
+            self.applyMaskBtn.setEnabled(False)
 
     def _maskBtnClicked(self):
         if self.belowThresholdAction.isChecked():
@@ -1304,6 +1390,13 @@ class MaskToolsWidget(qt.QWidget):
                 self._mask.updateStencil(self.levelSpinBox.value(),
                                          self._data > max_)
                 self._mask.commit()
+
+    def _maskNotFiniteBtnClicked(self):
+        """Handle not finite mask button clicked: mask NaNs and inf"""
+        self._mask.updateStencil(
+            self.levelSpinBox.value(),
+            numpy.logical_not(numpy.isfinite(self._data)))
+        self._mask.commit()
 
     def _loadRangeFromColormapTriggered(self):
         """Set range from active image colormap range"""

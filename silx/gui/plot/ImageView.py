@@ -58,7 +58,8 @@ from .. import qt
 from . import PlotWindow, PlotWidget
 from . import PlotActions
 from .Colors import cursorColorForColormap
-from .PlotTools import ProfileToolBar, LimitsToolBar
+from .PlotTools import LimitsToolBar
+from .Profile import ProfileToolBar
 
 
 _logger = logging.getLogger(__name__)
@@ -376,7 +377,7 @@ class ImageView(PlotWindow):
             # Convert plot area limits to image coordinates
             # and work in image coordinates (i.e., in pixels)
             xMin = int((xMin - origin[0]) / scale[0])
-            xMax = int((xMax - origin[0]) / scale[1])
+            xMax = int((xMax - origin[0]) / scale[0])
             yMin = int((yMin - origin[1]) / scale[1])
             yMax = int((yMax - origin[1]) / scale[1])
 

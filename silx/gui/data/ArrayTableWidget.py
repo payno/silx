@@ -1,7 +1,7 @@
 # coding: utf-8
 # /*##########################################################################
 #
-# Copyright (c) 2016 European Synchrotron Radiation Facility
+# Copyright (c) 2016-2017 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -28,19 +28,19 @@ The dimensions not displayed in the table can be browsed using improved
 sliders.
 
 The widget uses a TableView that relies on a custom abstract item
-model: :class:`silx.gui.widgets.ArrayTableModel`.
+model: :class:`silx.gui.data.ArrayTableModel`.
 """
 from __future__ import division
 import sys
 
 from silx.gui import qt
-from .TableWidget import TableView
+from silx.gui.widgets.TableWidget import TableView
 from .ArrayTableModel import ArrayTableModel
-from .FrameBrowser import HorizontalSliderWithBrowser
+from silx.gui.widgets.FrameBrowser import HorizontalSliderWithBrowser
 
 __authors__ = ["V.A. Sole", "P. Knobel"]
 __license__ = "MIT"
-__date__ = "05/12/2016"
+__date__ = "24/01/2017"
 
 
 class AxesSelector(qt.QWidget):
@@ -218,34 +218,6 @@ def _get_shape(array_like):
     return tuple(shape)
 
 
-def _data_is_text(array_like):
-    """Return True if data in array like object is text.
-
-    :param array_like: Array like object: numpy array, hdf5 dataset,
-        multi-dimensional sequence
-    :return: True if array contains string, False otherwise.
-    """
-    if hasattr(array_like, "dtype"):
-        t = "%s" % array_like.dtype
-        if '|' in t:
-            return True
-        else:
-            return False
-
-    subsequence = array_like
-    while hasattr(subsequence, "__len__"):
-        subsequence = subsequence[0]
-    else:
-        first_element = subsequence
-
-    if type(first_element) in [str, bytes]:
-        return True
-    if not sys.version_info[0] == 3:
-        if type(first_element) == unicode:
-            return True
-    return False
-
-
 class ArrayTableWidget(qt.QWidget):
     """This widget is designed to display data of 2D frames (images, slices)
     in a table view. The widget can load any n-dimensional array, and display
@@ -358,12 +330,6 @@ class ArrayTableWidget(qt.QWidget):
                 label.hide()
 
         # set model
-        if _data_is_text(data):
-            fmt = "%s"
-        else:
-            fmt = "%g"
-
-        self.model.setFormat(fmt)
         self.model.setArrayData(data, copy=copy, editable=editable)
         # some linux distributions need this call
         self.view.setModel(self.model)
@@ -392,6 +358,13 @@ class ArrayTableWidget(qt.QWidget):
             (text color) for each cell in the table.
         """
         self.model.setArrayColors(bgcolors, fgcolors)
+
+    def displayAxesSelector(self, isVisible):
+        """Allow to display or hide the axes selector.
+
+        :param bool isVisible: True to display the axes selector.
+        """
+        self.axesSelector.setVisible(isVisible)
 
     def setFrameIndex(self, index):
         """Set the active slice/image index in the n-dimensional array.
@@ -495,7 +468,6 @@ class ArrayTableWidget(qt.QWidget):
 
 def main():
     import numpy
-    import sys
     a = qt.QApplication([])
     d = numpy.random.normal(0, 1, (4, 5, 1000, 1000))
     for j in range(4):

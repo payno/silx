@@ -1,7 +1,7 @@
 # coding: utf-8
 # /*##########################################################################
 #
-# Copyright (c) 2004-2016 European Synchrotron Radiation Facility
+# Copyright (c) 2004-2017 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -70,10 +70,13 @@ import numpy
 
 from .. import icons
 from .. import qt
+from .._utils import convertArrayToQImage
+from . import Colors
 from .ColormapDialog import ColormapDialog
 from ._utils import applyZoomToPlot as _applyZoomToPlot
 from silx.third_party.EdfFile import EdfFile
 from silx.third_party.TiffIO import TiffIO
+from silx.math.histogram import Histogramnd
 
 from silx.io.utils import save1D, savespec
 
@@ -500,7 +503,11 @@ class SaveAction(PlotAction):
     """
     # TODO find a way to make the filter list selectable and extensible
 
-    SNAPSHOT_FILTERS = ('Plot Snapshot PNG (*.png)', 'Plot Snapshot JPEG (*.jpg)')
+    SNAPSHOT_FILTER_SVG = 'Plot Snapshot as SVG (*.svg)'
+
+    SNAPSHOT_FILTERS = ('Plot Snapshot as PNG (*.png)',
+                        'Plot Snapshot as JPEG (*.jpg)',
+                        SNAPSHOT_FILTER_SVG)
 
     # Dict of curve filters with CSV-like format
     # Using ordered dict to guarantee filters order
@@ -526,10 +533,24 @@ class SaveAction(PlotAction):
 
     ALL_CURVES_FILTERS = ("All curves as SpecFile (*.dat)", )
 
-    IMAGE_FILTER_EDF = 'Image as EDF (*.edf)'
-    IMAGE_FILTER_TIFF = 'Image as TIFF (*.tif)'
-    IMAGE_FILTER_NUMPY = 'Image as NumPy binary file (*.npy)'
-    IMAGE_FILTERS = (IMAGE_FILTER_EDF, IMAGE_FILTER_TIFF, IMAGE_FILTER_NUMPY)
+    IMAGE_FILTER_EDF = 'Image data as EDF (*.edf)'
+    IMAGE_FILTER_TIFF = 'Image data as TIFF (*.tif)'
+    IMAGE_FILTER_NUMPY = 'Image data as NumPy binary file (*.npy)'
+    IMAGE_FILTER_ASCII = 'Image data as ASCII (*.dat)'
+    IMAGE_FILTER_CSV_COMMA = 'Image data as ,-separated CSV (*.csv)'
+    IMAGE_FILTER_CSV_SEMICOLON = 'Image data as ;-separated CSV (*.csv)'
+    IMAGE_FILTER_CSV_TAB = 'Image data as tab-separated CSV (*.csv)'
+    IMAGE_FILTER_RGB_PNG = 'Image as PNG (*.png)'
+    IMAGE_FILTER_RGB_TIFF = 'Image as TIFF (*.tif)'
+    IMAGE_FILTERS = (IMAGE_FILTER_EDF,
+                     IMAGE_FILTER_TIFF,
+                     IMAGE_FILTER_NUMPY,
+                     IMAGE_FILTER_ASCII,
+                     IMAGE_FILTER_CSV_COMMA,
+                     IMAGE_FILTER_CSV_SEMICOLON,
+                     IMAGE_FILTER_CSV_TAB,
+                     IMAGE_FILTER_RGB_PNG,
+                     IMAGE_FILTER_RGB_TIFF)
 
     def __init__(self, plot, parent=None):
         super(SaveAction, self).__init__(
@@ -556,15 +577,19 @@ class SaveAction(PlotAction):
         :return: False if format is not supported or save failed,
                  True otherwise.
         """
-        if hasattr(qt.QPixmap, "grabWidget"):
-            # Qt 4
-            pixmap = qt.QPixmap.grabWidget(self.plot.getWidgetHandle())
+        if nameFilter == self.SNAPSHOT_FILTER_SVG:
+            self.plot.saveGraph(filename, fileFormat='svg')
+
         else:
-            # Qt 5
-            pixmap = self.plot.getWidgetHandle().grab()
-        if not pixmap.save(filename):
-            self._errorMessage()
-            return False
+            if hasattr(qt.QPixmap, "grabWidget"):
+                # Qt 4
+                pixmap = qt.QPixmap.grabWidget(self.plot.getWidgetHandle())
+            else:
+                # Qt 5
+                pixmap = self.plot.getWidgetHandle().grab()
+            if not pixmap.save(filename):
+                self._errorMessage()
+                return False
         return True
 
     def _saveCurve(self, filename, nameFilter):
@@ -697,6 +722,56 @@ class SaveAction(PlotAction):
                 self._errorMessage('Save failed\n')
                 return False
             return True
+
+        elif nameFilter in (self.IMAGE_FILTER_ASCII,
+                            self.IMAGE_FILTER_CSV_COMMA,
+                            self.IMAGE_FILTER_CSV_SEMICOLON,
+                            self.IMAGE_FILTER_CSV_TAB):
+            csvdelim, filetype = {
+                self.IMAGE_FILTER_ASCII: (' ', 'txt'),
+                self.IMAGE_FILTER_CSV_COMMA: (',', 'csv'),
+                self.IMAGE_FILTER_CSV_SEMICOLON: (';', 'csv'),
+                self.IMAGE_FILTER_CSV_TAB: ('\t', 'csv'),
+                }[nameFilter]
+
+            height, width = data.shape
+            rows, cols = numpy.mgrid[0:height, 0:width]
+            try:
+                save1D(filename, rows.ravel(), (cols.ravel(), data.ravel()),
+                       filetype=filetype,
+                       xlabel='row',
+                       ylabels=['column', 'value'],
+                       csvdelim=csvdelim,
+                       autoheader=True)
+
+            except IOError:
+                self._errorMessage('Save failed\n')
+                return False
+            return True
+
+        elif nameFilter in (self.IMAGE_FILTER_RGB_PNG,
+                            self.IMAGE_FILTER_RGB_TIFF):
+            # Apply colormap to data
+            colormap = image[4]['colormap']
+            scalarMappable = Colors.getMPLScalarMappable(colormap, data)
+            rgbaImage = scalarMappable.to_rgba(data, bytes=True)
+
+            # Convert RGB QImage
+            qimage = convertArrayToQImage(rgbaImage[:, :, :3])
+
+            if nameFilter == self.IMAGE_FILTER_RGB_PNG:
+                fileFormat = 'PNG'
+            else:
+                fileFormat = 'TIFF'
+
+            if qimage.save(filename, fileFormat):
+                return True
+            else:
+                _logger.error('Failed to save image as %s', filename)
+                qt.QMessageBox.critical(
+                    self.parent(),
+                    'Save image as',
+                    'Failed to save image')
 
         return False
 
@@ -1037,7 +1112,7 @@ class FitAction(PlotAction):
 
         # open a window with a FitWidget
         if self.fit_window is None:
-            self.fit_window = qt.QMainWindow(self.plot)
+            self.fit_window = qt.QMainWindow()
             # import done here rather than at module level to avoid circular import
             # FitWidget -> BackgroundWidget -> PlotWindow -> PlotActions -> FitWidget
             from ..fit.FitWidget import FitWidget
@@ -1062,13 +1137,141 @@ class FitAction(PlotAction):
                 " on x range %f-%f" % (self.xmin, self.xmax))
 
     def handle_signal(self, ddict):
+        x_fit = self.x[self.xmin <= self.x]
+        x_fit = x_fit[x_fit <= self.xmax]
         if ddict["event"] == "EstimateFinished":
-            pass
+            self.plot.removeCurve("Fit <%s>" % self.legend)
+            y_fit = self.fit_widget.fitmanager.gendata(estimated=True)
+            self.plot.addCurve(x_fit, y_fit,
+                               "Estimated <%s>" % self.legend,
+                               xlabel=self.xlabel, ylabel=self.ylabel,
+                               resetzoom=False)
         if ddict["event"] == "FitFinished":
-            x_fit = self.x[self.xmin <= self.x]
-            x_fit = x_fit[x_fit <= self.xmax]
+            self.plot.removeCurve("Estimated <%s>" % self.legend)
             y_fit = self.fit_widget.fitmanager.gendata()
             self.plot.addCurve(x_fit, y_fit,
                                "Fit <%s>" % self.legend,
                                xlabel=self.xlabel, ylabel=self.ylabel,
                                resetzoom=False)
+        if ddict["event"] == "EstimateFailed":
+            self.plot.removeCurve("Estimated <%s>" % self.legend)
+        if ddict["event"] == "FitFailed":
+            self.plot.removeCurve("Fit <%s>" % self.legend)
+
+
+class PixelIntensitiesHistoAction(PlotAction):
+    """QAction to plot the pixels intensities diagram
+
+    :param plot: :class:`.PlotWidget` instance on which to operate
+    :param parent: See :class:`QAction`
+    """
+
+    def __init__(self, plot, parent=None):
+        PlotAction.__init__(self,
+                            plot,
+                            icon='pixel-intensities',
+                            text='pixels intensity',
+                            tooltip='Compute image intensity distribution',
+                            triggered=self._triggered,
+                            parent=parent,
+                            checkable=True)
+        self._plotHistogram = None
+        self._connectedToActiveImage = False
+        self._histo = None
+
+    def _triggered(self, checked):
+        """Update the plot of the histogram visibility status
+
+        :param bool checked: status  of the action button
+        """
+        if checked:
+            if not self._connectedToActiveImage:
+                self.plot.sigActiveImageChanged.connect(
+                    self._activeImageChanged)
+                self._connectedToActiveImage = True
+                self.computeIntensityDistribution()
+
+            self.getHistogramPlotWidget().show()
+
+        else:
+            if self._connectedToActiveImage:
+                self.plot.sigActiveImageChanged.disconnect(
+                    self._activeImageChanged)
+                self._connectedToActiveImage = False
+
+            self.getHistogramPlotWidget().hide()
+
+    def _activeImageChanged(self, previous, legend):
+        """Handle active image change: toggle enabled toolbar, update curve"""
+        if self.isChecked():
+            self.computeIntensityDistribution()
+
+    def computeIntensityDistribution(self):
+        """Get the active image and compute the image intensity distribution
+        """
+        activeImage = self.plot.getActiveImage()
+
+        if activeImage is not None:
+            image = activeImage[0]
+            if image.ndim == 3:  # RGB(A) images
+                _logger.info('Converting current image from RGB(A) to grayscale\
+                    in order to compute the intensity distribution')
+                image = image[:,:,0]*0.299 + image[:,:,1]*0.587 + \
+                        image[:,:,2]*0.114
+
+            xmin = numpy.nanmin(image)
+            xmax = numpy.nanmax(image)
+            nbins = min(1024, int(numpy.sqrt(image.size)))
+            data_range = xmin, xmax
+            
+            # bad hack: get 256 bins in the case we have a B&W
+            if numpy.issubdtype(image.dtype, numpy.integer) and nbins>(xmax-xmin):
+                nbins = xmax-xmin
+
+            nbins = max(2, nbins)
+
+            data = image.ravel().astype(numpy.float32)
+            self._histo, w_histo, edges = Histogramnd(data,
+                                                n_bins=nbins,
+                                                histo_range=data_range)
+            assert(len(edges) == 1)
+            x=numpy.arange(nbins)*(xmax-xmin)/nbins + xmin
+            y=self._histo
+            self.getHistogramPlotWidget().addCurve(
+                x=x,
+                y=y,
+                legend='pixel intensity',
+                fill=True,
+                color='red',
+                histogram='center')
+            self.getHistogramPlotWidget().setActiveCurve(None)
+
+    def eventFilter(self, qobject, event):
+        """Observe when the close event is emitted then 
+        simply uncheck the action button
+
+        :param qobject: the object observe
+        :param event: the event received by qobject
+        """
+        if event.type() == qt.QEvent.Close:
+            if self._plotHistogram is not None:
+                self._plotHistogram.hide()
+            self.setChecked(False)
+
+        return PlotAction.eventFilter(self, qobject, event)
+
+    def getHistogramPlotWidget(self):
+        """Return the PlotWidget showing the histogram of the pixel intensities
+        """
+        from silx.gui.plot.PlotWindow import Plot1D
+        if self._plotHistogram is None:
+            self._plotHistogram = Plot1D()
+            self._plotHistogram.setWindowTitle('Image Intensity Histogram')
+            self._plotHistogram.installEventFilter(self)
+
+        return self._plotHistogram
+
+    def getHistogram(self):
+        """Return the histogram displayed in the HistogramPlotWiget
+        """
+        return self._histo

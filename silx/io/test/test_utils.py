@@ -1,6 +1,6 @@
 # coding: utf-8
 # /*##########################################################################
-# Copyright (C) 2016 European Synchrotron Radiation Facility
+# Copyright (C) 2016-2017 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -41,10 +41,15 @@ else:
     h5py_missing = False
     from ..utils import h5ls
 
+try:
+    import fabio
+except ImportError:
+    fabio = None
+
 
 __authors__ = ["P. Knobel"]
 __license__ = "MIT"
-__date__ = "13/12/2016"
+__date__ = "11/01/2017"
 
 
 expected_spec1 = r"""#F .*
@@ -178,6 +183,15 @@ class TestSave(unittest.TestCase):
         """Save csv using save(), with autoheader=True but
         xlabel=None and ylabels=None
         This is a non-regression test for bug #223"""
+        self.tempdir = tempfile.mkdtemp()
+        self.spec_fname = os.path.join(self.tempdir, "savespec.dat")
+        self.csv_fname = os.path.join(self.tempdir, "savecsv.csv")
+        self.npy_fname = os.path.join(self.tempdir, "savenpy.npy")
+
+        self.x = [1, 2, 3]
+        self.xlab = "Abscissa"
+        self.y = [[4, 5, 6], [7, 8, 9]]
+        self.ylabs = ["Ordinate1", "Ordinate2"]
         utils.save1D(self.csv_fname, self.x, self.y,
                autoheader=True, fmt=["%d", "%.2f", "%.2e"])
 
@@ -205,7 +219,14 @@ class TestH5Ls(unittest.TestCase):
             <HDF5 dataset "data": shape (1,), type "<f8">
 
     """
-    def setUp(self):
+    def assertMatchAnyStringInList(self, pattern, list_of_strings):
+        for string_ in list_of_strings:
+            if re.match(pattern, string_):
+                return None
+        raise AssertionError("regex pattern %s does not match any" % pattern +
+                             " string in list " + str(list_of_strings))
+
+    def testHdf5(self):
         fd, self.h5_fname = tempfile.mkstemp(text=False)
         # Close and delete (we just want the name)
         os.close(fd)
@@ -216,17 +237,6 @@ class TestH5Ls(unittest.TestCase):
         self.h5f["/foo/data"] = [3.14]
         self.h5f.close()
 
-    def tearDown(self):
-        os.unlink(self.h5_fname)
-
-    def assertMatchAnyStringInList(self, pattern, list_of_strings):
-        for string_ in list_of_strings:
-            if re.match(pattern, string_):
-                return None
-        raise AssertionError("regex pattern %s does not match any" % pattern +
-                             " string in list " + str(list_of_strings))
-
-    def testRepr(self):
         rep = h5ls(self.h5_fname)
         lines = rep.split("\n")
 
@@ -242,6 +252,40 @@ class TestH5Ls(unittest.TestCase):
         self.assertMatchAnyStringInList(
                 r'\t<HDF5 dataset "data": shape \(1,\), type "<f[48]">',
                 lines)
+
+        os.unlink(self.h5_fname)
+
+    # Following test case disabled d/t errors on AppVeyor:
+    #     os.unlink(spec_fname)
+    # PermissionError: [WinError 32] The process cannot access the file because
+    # it is being used by another process: 'C:\\...\\savespec.dat'
+
+    # def testSpec(self):
+    #     tempdir = tempfile.mkdtemp()
+    #     spec_fname = os.path.join(tempdir, "savespec.dat")
+    #
+    #     x = [1, 2, 3]
+    #     xlab = "Abscissa"
+    #     y = [[4, 5, 6], [7, 8, 9]]
+    #     ylabs = ["Ordinate1", "Ordinate2"]
+    #     utils.save1D(spec_fname, x, y, xlabel=xlab,
+    #                  ylabels=ylabs, filetype="spec",
+    #                  fmt=["%d", "%.2f"])
+    #
+    #     rep = h5ls(spec_fname)
+    #     lines = rep.split("\n")
+    #     self.assertIn("+1.1", lines)
+    #     self.assertIn("\t+instrument", lines)
+    #
+    #     self.assertMatchAnyStringInList(
+    #             r'\t\t\t<SPEC dataset "file_header": shape \(\), type "|S60">',
+    #             lines)
+    #     self.assertMatchAnyStringInList(
+    #             r'\t\t<SPEC dataset "Ordinate1": shape \(3L?,\), type "<f4">',
+    #             lines)
+    #
+    #     os.unlink(spec_fname)
+    #     shutil.rmtree(tempdir)
 
 
 class TestOpen(unittest.TestCase):
@@ -265,6 +309,23 @@ class TestOpen(unittest.TestCase):
         self.assertIsInstance(f, h5py.File)
         f.close()
 
+    def testH5With(self):
+        if h5py_missing:
+            self.skipTest("H5py is missing")
+
+        # create a file
+        tmp = tempfile.NamedTemporaryFile(suffix=".h5", delete=True)
+        tmp.file.close()
+        h5 = h5py.File(tmp.name, "w")
+        g = h5.create_group("arrays")
+        g.create_dataset("scalar", data=10)
+        h5.close()
+
+        # load it
+        with utils.open(tmp.name) as f:
+            self.assertIsNotNone(f)
+            self.assertIsInstance(f, h5py.File)
+
     def testSpec(self):
         # create a file
         tmp = tempfile.NamedTemporaryFile(mode="w+t", suffix=".dat", delete=True)
@@ -277,6 +338,59 @@ class TestOpen(unittest.TestCase):
         self.assertIsNotNone(f)
         self.assertEquals(f.h5py_class, h5py.File)
         f.close()
+
+    def testSpecWith(self):
+        # create a file
+        tmp = tempfile.NamedTemporaryFile(mode="w+t", suffix=".dat", delete=True)
+        tmp.file.close()
+        utils.savespec(tmp.name, [1], [1.1], xlabel="x", ylabel="y",
+                       fmt=["%d", "%.2f"], close_file=True, scan_number=1)
+
+        # load it
+        with utils.open(tmp.name) as f:
+            self.assertIsNotNone(f)
+            self.assertEquals(f.h5py_class, h5py.File)
+
+    def testEdf(self):
+        if h5py_missing:
+            self.skipTest("H5py is missing")
+        if fabio is None:
+            self.skipTest("Fabio is missing")
+
+        # create a file
+        tmp = tempfile.NamedTemporaryFile(suffix=".edf", delete=True)
+        tmp.file.close()
+        header = fabio.fabioimage.OrderedDict()
+        header["integer"] = "10"
+        data = numpy.array([[10, 50], [50, 10]])
+        fabiofile = fabio.edfimage.EdfImage(data, header)
+        fabiofile.write(tmp.name)
+
+        # load it
+        f = utils.open(tmp.name)
+        self.assertIsNotNone(f)
+        self.assertEquals(f.h5py_class, h5py.File)
+        f.close()
+
+    def testEdfWith(self):
+        if h5py_missing:
+            self.skipTest("H5py is missing")
+        if fabio is None:
+            self.skipTest("Fabio is missing")
+
+        # create a file
+        tmp = tempfile.NamedTemporaryFile(suffix=".edf", delete=True)
+        tmp.file.close()
+        header = fabio.fabioimage.OrderedDict()
+        header["integer"] = "10"
+        data = numpy.array([[10, 50], [50, 10]])
+        fabiofile = fabio.edfimage.EdfImage(data, header)
+        fabiofile.write(tmp.name)
+
+        # load it
+        with utils.open(tmp.name) as f:
+            self.assertIsNotNone(f)
+            self.assertEquals(f.h5py_class, h5py.File)
 
     def testUnsupported(self):
         # create a file

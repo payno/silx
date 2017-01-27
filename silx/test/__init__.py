@@ -1,7 +1,7 @@
 # coding: utf-8
 # /*##########################################################################
 #
-# Copyright (c) 2015-2016 European Synchrotron Radiation Facility
+# Copyright (c) 2015-2017 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -32,7 +32,7 @@ It will skip all tests from :mod:`silx.test.gui`.
 
 __authors__ = ["T. Vincent"]
 __license__ = "MIT"
-__date__ = "09/12/2016"
+__date__ = "23/01/2017"
 
 
 import logging
@@ -52,16 +52,19 @@ def suite():
     from ..image import test as test_image
     from ..gui import test as test_gui
     from ..utils import test as test_utils
-
+    from ..opencl import test as test_ocl
     test_suite = unittest.TestSuite()
+    # test sx first cause qui tests load ipython module
+    test_suite.addTest(test_sx.suite())
+    test_suite.addTest(test_gui.suite())
+    # then test no-gui tests
     test_suite.addTest(test_version.suite())
     test_suite.addTest(test_resources.suite())
-    test_suite.addTest(test_gui.suite())
     test_suite.addTest(test_utils.suite())
     test_suite.addTest(test_io.suite())
     test_suite.addTest(test_math.suite())
     test_suite.addTest(test_image.suite())
-    test_suite.addTest(test_sx.suite())
+    test_suite.addTest(test_ocl.suite())
     return test_suite
 
 
