@@ -181,7 +181,7 @@ class CurvesROIWidget(qt.QWidget):
     def roiFileDir(self, roiFileDir):
         self._roiFileDir = str(roiFileDir)
 
-    def setRois(self, roidict, order=None):
+    def setRois(self, roidict, order=None, deferedInit=True):
         """Set the ROIs by providing a dictionary of ROI information.
 
         The dictionary keys are the ROI names.
@@ -204,6 +204,9 @@ class CurvesROIWidget(qt.QWidget):
             assert order in ["from", "to", "type"]
             roilist = sorted(roidict.keys(),
                              key=lambda roi_name: roidict[roi_name].get(order))
+
+        if deferedInit is False:
+            self._finalizeInit()
 
         return self.roiTable.fillFromROIDict(roilist, roidict)
 
@@ -690,10 +693,7 @@ class CurvesROIWidget(qt.QWidget):
         if visible:
             if not self._isInit:
                 # Deferred ROI widget init finalization
-                self._isInit = True
-                self.sigROIWidgetSignal.connect(self._roiSignal)
-                # initialize with the ICR
-                self._roiSignal({'event': "AddROI"})
+                self._finalizeInit()
 
             if not self._isConnected:
                 self.plot.sigPlotSignal.connect(self._handleROIMarkerEvent)
@@ -712,6 +712,12 @@ class CurvesROIWidget(qt.QWidget):
     def _activeCurveChanged(self, *args):
         """Recompute ROIs when active curve changed."""
         self.calculateRois()
+
+    def _finalizeInit(self):
+        self._isInit = True
+        self.sigROIWidgetSignal.connect(self._roiSignal)
+        # initialize with the ICR
+        self._roiSignal({'event': "AddROI"})
 
 
 class ROITable(qt.QTableWidget):

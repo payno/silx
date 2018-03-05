@@ -24,7 +24,7 @@
 # ###########################################################################*/
 """Basic tests for CurvesROIWidget"""
 
-__authors__ = ["T. Vincent", "P. Knobel"]
+__authors__ = ["T. Vincent", "P. Knobel", "H. Payno"]
 __license__ = "MIT"
 __date__ = "16/11/2017"
 
@@ -32,9 +32,8 @@ __date__ = "16/11/2017"
 import logging
 import os.path
 import unittest
-
+from collections import OrderedDict
 import numpy
-
 from silx.gui import qt
 from silx.test.utils import temp_dir
 from silx.gui.test.utils import TestCaseQt
@@ -152,6 +151,55 @@ class TestCurvesROIWidget(TestCaseQt):
                                   (-x <= output["negative"]["to"]))[0]
         self.assertEqual(output["negative"]["rawcounts"],
                          y[selection].sum(), "Calculation failed on negative X coordinates")
+
+
+class TestDeferedInit(TestCaseQt):
+    """Test the behavior of the defered init"""
+
+    def setUp(self):
+        super(TestDeferedInit, self).setUp()
+        self.plot = PlotWindow()
+        self.plot.show()
+        self.qWaitForWindowExposed(self.plot)
+
+        self.widget = CurvesROIWidget.CurvesROIDockWidget(plot=self.plot,
+                                                          name='TEST')
+        self.widget.show()
+        self.qWaitForWindowExposed(self.widget)
+
+        x = numpy.arange(100.)
+        y = numpy.arange(100.)
+        self.plot.addCurve(x=x, y=y, legend="name", replace="True")
+        self.roisDefs = OrderedDict([
+            ["range1",
+             OrderedDict([["from", 20], ["to", 200], ["type", "energy"]])],
+            ["range2",
+             OrderedDict([["from", 300], ["to", 500], ["type", "energy"]])]
+        ])
+
+    def tearDown(self):
+        self.plot.setAttribute(qt.Qt.WA_DeleteOnClose)
+        self.plot.close()
+        del self.plot
+
+        self.widget.setAttribute(qt.Qt.WA_DeleteOnClose)
+        self.widget.close()
+        del self.widget
+
+        super(TestDeferedInit, self).tearDown()
+
+    def testSetRoiDefered(self):
+        self.assertFalse(self.plot.getCurvesRoiDockWidget().roiWidget._isInit)
+        self.plot.getCurvesRoiDockWidget().setRois(self.roisDefs, deferedInit=False)
+        self.assertTrue(self.plot.getCurvesRoiDockWidget().roiWidget._isInit)
+
+    def testSetRoiNotDefered(self):
+        self.assertFalse(self.plot.getCurvesRoiDockWidget().roiWidget._isInit)
+        self.plot.getCurvesRoiDockWidget().setRois(self.roisDefs, deferedInit=True)
+        self.assertFalse(self.plot.getCurvesRoiDockWidget().roiWidget._isInit)
+        self.plot.getCurvesRoiDockWidget().setVisible(True)
+        self.assertTrue(self.plot.getCurvesRoiDockWidget().roiWidget._isInit)
+
 
 def suite():
     test_suite = unittest.TestSuite()
