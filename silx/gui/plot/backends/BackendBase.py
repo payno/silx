@@ -31,8 +31,7 @@ This API is a simplified version of PyMca PlotBackend API.
 
 __authors__ = ["V.A. Sole", "T. Vincent"]
 __license__ = "MIT"
-__date__ = "16/08/2017"
-
+__date__ = "24/04/2018"
 
 import weakref
 from ... import qt
@@ -59,6 +58,7 @@ class BackendBase(object):
         self.__yLimits = {'left': (1., 100.), 'right': (1., 100.)}
         self.__yAxisInverted = False
         self.__keepDataAspectRatio = False
+        self._xAxisTimeZone = None
         self._axesDisplayed = True
         # Store a weakref to get access to the plot state.
         self._setPlot(plot)
@@ -109,7 +109,7 @@ class BackendBase(object):
         :param str legend: The legend to be associated to the curve
         :param color: color(s) to be used
         :type color: string ("#RRGGBB") or (npoints, 4) unsigned byte array or
-                     one of the predefined color names defined in Colors.py
+                     one of the predefined color names defined in colors.py
         :param str symbol: Symbol to be drawn at each (x, y) position::
 
             - ' ' or '' no symbol
@@ -252,7 +252,7 @@ class BackendBase(object):
 
         :param bool flag: Toggle the display of a crosshair cursor.
         :param color: The color to use for the crosshair.
-        :type color: A string (either a predefined color name in Colors.py
+        :type color: A string (either a predefined color name in colors.py
                     or "#RRGGBB")) or a 4 columns unsigned byte array.
         :param int linewidth: The width of the lines of the crosshair.
         :param linestyle: Type of line::
@@ -405,6 +405,39 @@ class BackendBase(object):
         self.__yLimits[axis] = ymin, ymax
 
     # Graph axes
+
+
+    def getXAxisTimeZone(self):
+        """Returns tzinfo that is used if the X-Axis plots date-times.
+
+        None means the datetimes are interpreted as local time.
+
+        :rtype: datetime.tzinfo of None.
+        """
+        return self._xAxisTimeZone
+
+    def setXAxisTimeZone(self, tz):
+        """Sets tzinfo that is used if the X-Axis plots date-times.
+
+        Use None to let the datetimes be interpreted as local time.
+
+        :rtype: datetime.tzinfo of None.
+        """
+        self._xAxisTimeZone = tz
+
+    def isXAxisTimeSeries(self):
+        """Return True if the X-axis scale shows datetime objects.
+
+        :rtype: bool
+        """
+        raise NotImplementedError()
+
+    def setXAxisTimeSeries(self, isTimeSeries):
+        """Set whether the X-axis is a time series
+
+        :param bool flag: True to switch to time series, False for regular axis.
+        """
+        raise NotImplementedError()
 
     def setXAxisLogarithmic(self, flag):
         """Set the X axis scale between linear and log.

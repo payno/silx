@@ -62,6 +62,7 @@ build_script:
     # Install build dependencies
     - "pip install --upgrade wheel"
     - "pip install --upgrade numpy"
+    - "pip install --upgrade cython"
 
     # Print Python info
     - "python ci\\info_platform.py"
@@ -79,6 +80,9 @@ before_test:
     # Create test virtualenv
     - "virtualenv --clear %VENV_TEST_DIR%"
     - "%VENV_TEST_DIR%\\Scripts\\activate.bat"
+
+    # First install any temporary pinned/additional requirements
+    - pip install -r "ci\requirements-pinned.txt
 
     # Install dependencies
     - pip install --pre -r requirements.txt

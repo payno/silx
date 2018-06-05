@@ -1,7 +1,7 @@
 # coding: utf-8
 # /*##########################################################################
 #
-# Copyright (c) 2017 European Synchrotron Radiation Facility
+# Copyright (c) 2017-2018 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -35,7 +35,7 @@ from __future__ import division
 
 __authors__ = ["T. Vincent", "P. Knobel"]
 __license__ = "MIT"
-__date__ = "20/06/2017"
+__date__ = "24/04/2018"
 
 
 import os
@@ -48,7 +48,7 @@ from silx.image import shapes
 
 from ._BaseMaskToolsWidget import BaseMask, BaseMaskToolsWidget, BaseMaskToolsDockWidget
 from . import items
-from .Colors import cursorColorForColormap, rgba
+from ..colors import cursorColorForColormap, rgba
 from .. import qt
 
 from silx.third_party.EdfFile import EdfFile
@@ -76,6 +76,7 @@ class ImageMask(BaseMask):
         :param image: :class:`silx.gui.plot.items.ImageBase` instance
         """
         BaseMask.__init__(self, image)
+        self.reset(shape=(0, 0))  # Init the mask with a 2D shape
 
     def getDataValues(self):
         """Return image data as a 2D or 3D array (if it is a RGBA image).
@@ -328,6 +329,13 @@ class MaskToolsWidget(BaseMaskToolsWidget):
         activeImage = self.plot.getActiveImage()
         if activeImage is None or activeImage.getLegend() == self._maskName:
             # No active image or active image is the mask...
+            self._data = numpy.zeros((0, 0), dtype=numpy.uint8)
+            self._mask.setDataItem(None)
+            self._mask.reset()
+
+            if self.plot.getImage(self._maskName):
+                self.plot.remove(self._maskName, kind='image')
+
             self.plot.sigActiveImageChanged.disconnect(
                 self._activeImageChangedAfterCare)
         else:

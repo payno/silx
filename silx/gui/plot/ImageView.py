@@ -1,7 +1,7 @@
 # coding: utf-8
 # /*##########################################################################
 #
-# Copyright (c) 2015-2017 European Synchrotron Radiation Facility
+# Copyright (c) 2015-2018 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -42,18 +42,19 @@ from __future__ import division
 
 __authors__ = ["T. Vincent"]
 __license__ = "MIT"
-__date__ = "17/08/2017"
+__date__ = "26/04/2018"
 
 
 import logging
 import numpy
 
+import silx
 from .. import qt
 
 from . import items, PlotWindow, PlotWidget, actions
-from .Colormap import Colormap
-from .Colors import cursorColorForColormap
-from .PlotTools import LimitsToolBar
+from ..colors import Colormap
+from ..colors import cursorColorForColormap
+from .tools import LimitsToolBar
 from .Profile import ProfileToolBar
 
 
@@ -295,6 +296,9 @@ class ImageView(PlotWindow):
                                         roi=False, mask=True)
         if parent is None:
             self.setWindowTitle('ImageView')
+
+        if silx.config.DEFAULT_PLOT_IMAGE_Y_AXIS_ORIENTATION == 'downward':
+            self.getYAxis().setInverted(True)
 
         self._initWidgets(backend)
 
@@ -810,17 +814,17 @@ class ImageViewMainWindow(ImageView):
         self.statusBar()
 
         menu = self.menuBar().addMenu('File')
-        menu.addAction(self.saveAction)
-        menu.addAction(self.printAction)
+        menu.addAction(self.getOutputToolBar().getSaveAction())
+        menu.addAction(self.getOutputToolBar().getPrintAction())
         menu.addSeparator()
         action = menu.addAction('Quit')
         action.triggered[bool].connect(qt.QApplication.instance().quit)
 
         menu = self.menuBar().addMenu('Edit')
-        menu.addAction(self.copyAction)
+        menu.addAction(self.getOutputToolBar().getCopyAction())
         menu.addSeparator()
-        menu.addAction(self.resetZoomAction)
-        menu.addAction(self.colormapAction)
+        menu.addAction(self.getResetZoomAction())
+        menu.addAction(self.getColormapAction())
         menu.addAction(actions.control.KeepAspectRatioAction(self, self))
         menu.addAction(actions.control.YAxisInvertedAction(self, self))
 

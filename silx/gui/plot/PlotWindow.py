@@ -1,7 +1,7 @@
 # coding: utf-8
 # /*##########################################################################
 #
-# Copyright (c) 2004-2017 European Synchrotron Radiation Facility
+# Copyright (c) 2004-2018 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -29,11 +29,14 @@ The :class:`PlotWindow` is a subclass of :class:`.PlotWidget`.
 
 __authors__ = ["V.A. Sole", "T. Vincent"]
 __license__ = "MIT"
-__date__ = "15/02/2018"
+__date__ = "26/04/2018"
 
 import collections
 import logging
+import weakref
 
+import silx
+from silx.utils.weakref import WeakMethodProxy
 from silx.utils.deprecation import deprecated
 
 from . import PlotWidget
@@ -44,11 +47,12 @@ from .actions import fit as actions_fit
 from .actions import control as actions_control
 from .actions import histogram as actions_histogram
 from . import PlotToolButtons
-from .PlotTools import PositionInfo
+from . import tools
 from .Profile import ProfileToolBar
 from .LegendSelector import LegendsDockWidget
 from .CurvesROIWidget import CurvesROIDockWidget
 from .MaskToolsWidget import MaskToolsDockWidget
+from .StatsWidget import StatsDockWidget
 from .ColorBar import ColorBarWidget
 try:
     from ..console import IPythonDockWidget
@@ -90,7 +94,7 @@ class PlotWindow(PlotWidget):
                      (Default: False).
                      It also supports a list of (name, funct(x, y)->value)
                      to customize the displayed values.
-                     See :class:`silx.gui.plot.PlotTools.PositionInfo`.
+                     See :class:`~silx.gui.plot.tools.PositionInfo`.
     :param bool roi: Toggle visibilty of ROI action.
     :param bool mask: Toggle visibilty of mask action.
     :param bool fit: Toggle visibilty of fit action.
@@ -114,6 +118,7 @@ class PlotWindow(PlotWidget):
         self._curvesROIDockWidget = None
         self._maskToolsDockWidget = None
         self._consoleDockWidget = None
+        self._statsDockWidget = None
 
         # Create color bar, hidden by default for backward compatibility
         self._colorbar = ColorBarWidget(parent=self, plot=self)
@@ -121,11 +126,6 @@ class PlotWindow(PlotWidget):
         # Init actions
         self.group = qt.QActionGroup(self)
         self.group.setExclusive(False)
-
-        self.zoomModeAction = self.group.addAction(
-            actions.mode.ZoomModeAction(self))
-        self.panModeAction = self.group.addAction(
-            actions.mode.PanModeAction(self))
 
         self.resetZoomAction = self.group.addAction(
             actions.control.ResetZoomAction(self))
@@ -205,28 +205,13 @@ class PlotWindow(PlotWidget):
             actions_medfilt.MedianFilter1DAction(self))
         self._medianFilter1DAction.setVisible(False)
 
-        self._separator = qt.QAction('separator', self)
-        self._separator.setSeparator(True)
-        self.group.addAction(self._separator)
-
-        self.copyAction = self.group.addAction(actions.io.CopyAction(self))
-        self.copyAction.setVisible(copy)
-        self.addAction(self.copyAction)
-
-        self.saveAction = self.group.addAction(actions.io.SaveAction(self))
-        self.saveAction.setVisible(save)
-        self.addAction(self.saveAction)
-
-        self.printAction = self.group.addAction(actions.io.PrintAction(self))
-        self.printAction.setVisible(print_)
-        self.addAction(self.printAction)
-
         self.fitAction = self.group.addAction(actions_fit.FitAction(self))
         self.fitAction.setVisible(fit)
         self.addAction(self.fitAction)
 
         # lazy loaded actions needed by the controlButton menu
         self._consoleAction = None
+        self._statsAction = None
         self._panWithArrowKeysAction = None
         self._crosshairAction = None
 
@@ -270,7 +255,7 @@ class PlotWindow(PlotWidget):
                     converters = position
                 else:
                     converters = None
-                self.positionWidget = PositionInfo(
+                self.positionWidget = tools.PositionInfo(
                     plot=self, converters=converters)
                 self.positionWidget.autoSnapToActiveCurve = True
 
@@ -283,8 +268,37 @@ class PlotWindow(PlotWidget):
             gridLayout.addWidget(bottomBar, 1, 0, 1, -1)
 
         # Creating the toolbar also create actions for toolbuttons
+        self._interactiveModeToolBar = tools.InteractiveModeToolBar(
+            parent=self, plot=self)
+        self.addToolBar(self._interactiveModeToolBar)
+
         self._toolbar = self._createToolBar(title='Plot', parent=None)
         self.addToolBar(self._toolbar)
+
+        self._outputToolBar = tools.OutputToolBar(parent=self, plot=self)
+        self._outputToolBar.getCopyAction().setVisible(copy)
+        self._outputToolBar.getSaveAction().setVisible(save)
+        self._outputToolBar.getPrintAction().setVisible(print_)
+        self.addToolBar(self._outputToolBar)
+
+        # Activate shortcuts in PlotWindow widget:
+        for toolbar in (self._interactiveModeToolBar, self._outputToolBar):
+            for action in toolbar.actions():
+                self.addAction(action)
+
+    def getInteractiveModeToolBar(self):
+        """Returns QToolBar controlling interactive mode.
+
+        :rtype: QToolBar
+        """
+        return self._interactiveModeToolBar
+
+    def getOutputToolBar(self):
+        """Returns QToolBar containing save, copy and print actions
+
+        :rtype: QToolBar
+        """
+        return self._outputToolBar
 
     def getSelectionMask(self):
         """Return the current mask handled by :attr:`maskToolsDockWidget`.
@@ -313,7 +327,7 @@ class PlotWindow(PlotWidget):
         show it or hide it."""
         # create widget if needed (first call)
         if self._consoleDockWidget is None:
-            available_vars = {"plt": self}
+            available_vars = {"plt": weakref.proxy(self)}
             banner = "The variable 'plt' is available. Use the 'whos' "
             banner += "and 'help(plt)' commands for more information.\n\n"
             self._consoleDockWidget = IPythonDockWidget(
@@ -326,6 +340,9 @@ class PlotWindow(PlotWidget):
                 self.getConsoleAction().setChecked)
 
         self._consoleDockWidget.setVisible(isChecked)
+
+    def _toggleStatsVisibility(self, isChecked=False):
+        self.getStatsDockWidget().setVisible(isChecked)
 
     def _createToolBar(self, title, parent):
         """Create a QToolBar from the QAction of the PlotWindow.
@@ -355,8 +372,6 @@ class PlotWindow(PlotWidget):
                     self.yAxisInvertedAction = toolbar.addWidget(obj)
                 else:
                     raise RuntimeError()
-            if obj is self.panModeAction:
-                toolbar.addSeparator()
         return toolbar
 
     def toolBar(self):
@@ -381,6 +396,7 @@ class PlotWindow(PlotWidget):
         controlMenu.clear()
         controlMenu.addAction(self.getLegendsDockWidget().toggleViewAction())
         controlMenu.addAction(self.getRoiAction())
+        controlMenu.addAction(self.getStatsAction())
         controlMenu.addAction(self.getMaskAction())
         controlMenu.addAction(self.getConsoleAction())
 
@@ -474,7 +490,27 @@ class PlotWindow(PlotWidget):
             self.addTabbedDockWidget(self._maskToolsDockWidget)
         return self._maskToolsDockWidget
 
+    def getStatsDockWidget(self):
+        """DockWidget with Legend panel"""
+        if self._statsDockWidget is None:
+            self._statsDockWidget = StatsDockWidget(plot=self)
+            self._statsDockWidget.hide()
+            self.addTabbedDockWidget(self._statsDockWidget)
+        return self._statsDockWidget
+
     # getters for actions
+    @property
+    @deprecated(replacement="getInteractiveModeToolBar().getZoomModeAction()",
+                since_version="0.8.0")
+    def zoomModeAction(self):
+        return self.getInteractiveModeToolBar().getZoomModeAction()
+
+    @property
+    @deprecated(replacement="getInteractiveModeToolBar().getPanModeAction()",
+                since_version="0.8.0")
+    def panModeAction(self):
+        return self.getInteractiveModeToolBar().getPanModeAction()
+
     @property
     @deprecated(replacement="getConsoleAction()", since_version="0.4.0")
     def consoleAction(self):
@@ -544,6 +580,13 @@ class PlotWindow(PlotWidget):
     @deprecated(replacement="getRoiAction()", since_version="0.4.0")
     def roiAction(self):
         return self.getRoiAction()
+
+    def getStatsAction(self):
+        if self._statsAction is None:
+            self._statsAction = qt.QAction('Curves stats', self)
+            self._statsAction.setCheckable(True)
+            self._statsAction.toggled.connect(self._toggleStatsVisibility)
+        return self._statsAction
 
     def getRoiAction(self):
         """QAction toggling curve ROI dock widget
@@ -667,21 +710,21 @@ class PlotWindow(PlotWidget):
 
         :rtype: actions.PlotAction
         """
-        return self.copyAction
+        return self.getOutputToolBar().getCopyAction()
 
     def getSaveAction(self):
         """Action to save plot
 
         :rtype: actions.PlotAction
         """
-        return self.saveAction
+        return self.getOutputToolBar().getSaveAction()
 
     def getPrintAction(self):
         """Action to print plot
 
         :rtype: actions.PlotAction
         """
-        return self.printAction
+        return self.getOutputToolBar().getPrintAction()
 
     def getFitAction(self):
         """Action to fit selected curve
@@ -757,7 +800,7 @@ class Plot2D(PlotWindow):
         posInfo = [
             ('X', lambda x, y: x),
             ('Y', lambda x, y: y),
-            ('Data', self._getImageValue)]
+            ('Data', WeakMethodProxy(self._getImageValue))]
 
         super(Plot2D, self).__init__(parent=parent, backend=backend,
                                      resetzoom=True, autoScale=False,
@@ -772,6 +815,9 @@ class Plot2D(PlotWindow):
         self.getXAxis().setLabel('Columns')
         self.getYAxis().setLabel('Rows')
 
+        if silx.config.DEFAULT_PLOT_IMAGE_Y_AXIS_ORIENTATION == 'downward':
+            self.getYAxis().setInverted(True)
+
         self.profile = ProfileToolBar(plot=self)
         self.addToolBar(self.profile)
 
@@ -780,7 +826,7 @@ class Plot2D(PlotWindow):
 
         # Put colorbar action after colormap action
         actions = self.toolBar().actions()
-        for index, action in enumerate(actions):
+        for action in actions:
             if action is self.getColormapAction():
                 break
 

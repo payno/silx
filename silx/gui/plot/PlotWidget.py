@@ -31,37 +31,43 @@ from __future__ import division
 
 __authors__ = ["V.A. Sole", "T. Vincent"]
 __license__ = "MIT"
-__date__ = "18/10/2017"
+__date__ = "26/04/2018"
 
 
 from collections import OrderedDict, namedtuple
 from contextlib import contextmanager
+import datetime as dt
 import itertools
 import logging
 
 import numpy
 
+import silx
+from silx.utils.weakref import WeakMethodProxy
+from silx.utils import deprecation
+from silx.utils.property import classproperty
 from silx.utils.deprecation import deprecated
 # Import matplotlib backend here to init matplotlib our way
 from .backends.BackendMatplotlib import BackendMatplotlibQt
 
-from .Colormap import Colormap
-from . import Colors
+from ..colors import Colormap
+from .. import colors
 from . import PlotInteraction
 from . import PlotEvents
 from .LimitsHistory import LimitsHistory
 from . import _utils
 
 from . import items
+from .items.axis import TickMode
 
 from .. import qt
 from ._utils.panzoom import ViewConstraints
-
+from ...gui.plot._utils.dtime_ticklayout import timestamp
 
 _logger = logging.getLogger(__name__)
 
 
-_COLORDICT = Colors.COLORDICT
+_COLORDICT = colors.COLORDICT
 _COLORLIST = [_COLORDICT['black'],
               _COLORDICT['blue'],
               _COLORDICT['red'],
@@ -110,8 +116,12 @@ class PlotWidget(qt.QMainWindow):
     :type backend: str or :class:`BackendBase.BackendBase`
     """
 
-    DEFAULT_BACKEND = 'matplotlib'
-    """Class attribute setting the default backend for all instances."""
+    # TODO: Can be removed for silx 0.10
+    @classproperty
+    @deprecation.deprecated(replacement="silx.config.DEFAULT_PLOT_BACKEND", since_version="0.8", skip_backtrace_count=2)
+    def DEFAULT_BACKEND(self):
+        """Class attribute setting the default backend for all instances."""
+        return silx.config.DEFAULT_PLOT_BACKEND
 
     colorList = _COLORLIST
     colorDict = _COLORDICT
@@ -209,7 +219,7 @@ class PlotWidget(qt.QMainWindow):
             self.setWindowTitle('PlotWidget')
 
         if backend is None:
-            backend = self.DEFAULT_BACKEND
+            backend = silx.config.DEFAULT_PLOT_BACKEND
 
         if hasattr(backend, "__call__"):
             self._backend = backend(self, parent)
@@ -296,7 +306,9 @@ class PlotWidget(qt.QMainWindow):
         self.setGraphYLimits(0., 100., axis='right')
         self.setGraphYLimits(0., 100., axis='left')
 
+    # TODO: Can be removed for silx 0.10
     @staticmethod
+    @deprecation.deprecated(replacement="silx.config.DEFAULT_PLOT_BACKEND", since_version="0.8", skip_backtrace_count=2)
     def setDefaultBackend(backend):
         """Set system wide default plot backend.
 
@@ -306,7 +318,7 @@ class PlotWidget(qt.QMainWindow):
                         'matplotlib' (default), 'mpl', 'opengl', 'gl', 'none'
                         or a :class:`BackendBase.BackendBase` class
         """
-        PlotWidget.DEFAULT_BACKEND = backend
+        silx.config.DEFAULT_PLOT_BACKEND = backend
 
     def _getDirtyPlot(self):
         """Return the plot dirty flag.
@@ -525,7 +537,9 @@ class PlotWidget(qt.QMainWindow):
 
         :param numpy.ndarray x: The data corresponding to the x coordinates.
           If you attempt to plot an histogram you can set edges values in x.
-          In this case len(x) = len(y) + 1
+          In this case len(x) = len(y) + 1.
+          If x contains datetime objects the XAxis tickMode is set to
+          TickMode.TIME_SERIES.
         :param numpy.ndarray y: The data corresponding to the y coordinates
         :param str legend: The legend to be associated to the curve (or None)
         :param info: User-defined information associated to the curve
@@ -533,7 +547,7 @@ class PlotWidget(qt.QMainWindow):
                              curves
         :param color: color(s) to be used
         :type color: str ("#RRGGBB") or (npoints, 4) unsigned byte array or
-                     one of the predefined color names defined in Colors.py
+                     one of the predefined color names defined in colors.py
         :param str symbol: Symbol to be drawn at each (x, y) position::
 
             - 'o' circle
@@ -686,6 +700,13 @@ class PlotWidget(qt.QMainWindow):
             if yerror is None:
                 yerror = curve.getYErrorData(copy=False)
 
+            # Convert x to timestamps so that the internal representation
+            # remains floating points. The user is expected to set the axis'
+            # tickMode to TickMode.TIME_SERIES and, if necessary, set the axis
+            # to the correct time zone.
+            if len(x) > 0 and isinstance(x[0], dt.datetime):
+                x = [timestamp(d) for d in x]
+
             curve.setData(x, y, xerror, yerror, copy=copy)
 
         if replace:  # Then remove all other curves
@@ -739,7 +760,7 @@ class PlotWidget(qt.QMainWindow):
             The legend to be associated to the histogram (or None)
         :param color: color to be used
         :type color: str ("#RRGGBB") or RGB unsigned byte array or
-                     one of the predefined color names defined in Colors.py
+                     one of the predefined color names defined in colors.py
         :param bool fill: True to fill the curve, False otherwise (default).
         :param str align:
             In case histogram values and edges have the same length N,
@@ -1478,7 +1499,7 @@ class PlotWidget(qt.QMainWindow):
         :param bool flag: Toggle the display of a crosshair cursor.
                           The crosshair cursor is hidden by default.
         :param color: The color to use for the crosshair.
-        :type color: A string (either a predefined color name in Colors.py
+        :type color: A string (either a predefined color name in colors.py
                     or "#RRGGBB")) or a 4 columns unsigned byte array
                     (Default: black).
         :param int linewidth: The width of the lines of the crosshair
@@ -2271,7 +2292,7 @@ class PlotWidget(qt.QMainWindow):
             autoscale gray colormap.
         """
         if colormap is None:
-            colormap = Colormap(name='gray',
+            colormap = Colormap(name=silx.config.DEFAULT_COLORMAP_NAME,
                                 normalization='linear',
                                 vmin=None,
                                 vmax=None)
@@ -2371,10 +2392,10 @@ class PlotWidget(qt.QMainWindow):
                                  to handle the graph events
                                  If None (default), use a default listener.
         """
-        # TODO allow multiple listeners, keep a weakref on it
+        # TODO allow multiple listeners
         # allow register listener by event type
         if callbackFunction is None:
-            callbackFunction = self.graphCallback
+            callbackFunction = WeakMethodProxy(self.graphCallback)
         self._callback = callbackFunction
 
     def graphCallback(self, ddict=None):
@@ -2393,6 +2414,8 @@ class PlotWidget(qt.QMainWindow):
             if ddict['button'] == "left":
                 self.setActiveCurve(ddict['label'])
                 qt.QToolTip.showText(self.cursor().pos(), ddict['label'])
+        elif ddict['event'] == 'mouseClicked' and ddict['button'] == 'left':
+            self.setActiveCurve(None)
 
     def saveGraph(self, filename, fileFormat=None, dpi=None, **kw):
         """Save a snapshot of the plot.
@@ -2742,6 +2765,39 @@ class PlotWidget(qt.QMainWindow):
 
         return None
 
+    def _pick(self, x, y):
+        """Pick items in the plot at given position.
+
+        :param float x: X position in pixels
+        :param float y: Y position in pixels
+        :return: Iterable of (plot item, indices) at picked position.
+            Items are ordered from back to front.
+        """
+        items = []
+
+        # Convert backend result to plot items
+        for itemInfo in self._backend.pickItems(
+                x, y, kinds=('marker', 'curve', 'image')):
+            kind, legend = itemInfo['kind'], itemInfo['legend']
+
+            if kind in ('marker', 'image'):
+                item = self._getItem(kind=kind, legend=legend)
+                indices = None  # TODO compute indices for images
+
+            else:  # backend kind == 'curve'
+                for kind in ('curve', 'histogram', 'scatter'):
+                    item = self._getItem(kind=kind, legend=legend)
+                    if item is not None:
+                        indices = itemInfo['indices']
+                        break
+                else:
+                    _logger.error(
+                        'Cannot find corresponding picked item')
+                    continue
+            items.append((item, indices))
+
+        return tuple(items)
+
     # User event handling #
 
     def _isPositionInPlotArea(self, x, y):
@@ -2847,7 +2903,7 @@ class PlotWidget(qt.QMainWindow):
         """Switch the interactive mode.
 
         :param str mode: The name of the interactive mode.
-                         In 'draw', 'pan', 'select', 'zoom'.
+                         In 'draw', 'pan', 'select', 'select-draw', 'zoom'.
         :param color: Only for 'draw' and 'zoom' modes.
                       Color to use for drawing selection area. Default black.
         :type color: Color description: The name as a str or
@@ -2960,7 +3016,7 @@ class PlotWidget(qt.QMainWindow):
         :param str label: Associated text for identifying draw signals
         :param color: The color to use to draw the selection area
         :type color: string ("#RRGGBB") or 4 column unsigned byte array or
-                     one of the predefined color names defined in Colors.py
+                     one of the predefined color names defined in colors.py
         """
         _logger.warning(
             'setDrawModeEnabled deprecated, use setInteractiveMode instead')
@@ -3012,7 +3068,7 @@ class PlotWidget(qt.QMainWindow):
                       (Default: 'black')
         :param color: The color to use to draw the selection area
         :type color: string ("#RRGGBB") or 4 column unsigned byte array or
-                     one of the predefined color names defined in Colors.py
+                     one of the predefined color names defined in colors.py
         """
         _logger.warning(
             'setZoomModeEnabled deprecated, use setInteractiveMode instead')

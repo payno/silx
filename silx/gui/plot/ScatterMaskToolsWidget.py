@@ -1,7 +1,7 @@
 # coding: utf-8
 # /*##########################################################################
 #
-# Copyright (c) 2017 European Synchrotron Radiation Facility
+# Copyright (c) 2018 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -35,7 +35,7 @@ from __future__ import division
 
 __authors__ = ["P. Knobel"]
 __license__ = "MIT"
-__date__ = "07/04/2017"
+__date__ = "24/04/2018"
 
 
 import math
@@ -48,7 +48,7 @@ from .. import qt
 from ...image import shapes
 
 from ._BaseMaskToolsWidget import BaseMask, BaseMaskToolsWidget, BaseMaskToolsDockWidget
-from .Colors import cursorColorForColormap, rgba
+from ..colors import cursorColorForColormap, rgba
 
 
 _logger = logging.getLogger(__name__)
@@ -467,7 +467,7 @@ class ScatterMaskToolsWidget(BaseMaskToolsWidget):
                 event['event'] == 'drawingFinished'):
             doMask = self._isMasking()
             vertices = event['points']
-            vertices = vertices.astype(numpy.int)[:, (1, 0)]  # (y, x)
+            vertices = vertices[:, (1, 0)]  # (y, x)
             self._mask.updatePolygon(level, vertices, doMask)
             self._mask.commit()
 

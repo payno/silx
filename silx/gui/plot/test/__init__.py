@@ -1,7 +1,7 @@
 # coding: utf-8
 # /*##########################################################################
 #
-# Copyright (c) 2016-2017 European Synchrotron Radiation Facility
+# Copyright (c) 2016-2018 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -24,24 +24,21 @@
 # ###########################################################################*/
 __authors__ = ["T. Vincent"]
 __license__ = "MIT"
-__date__ = "28/11/2017"
+__date__ = "24/04/2018"
 
 
 import unittest
 
 from .._utils import test
 from . import testColorBar
-from . import testColormap
-from . import testColormapDialog
-from . import testColors
 from . import testCurvesROIWidget
+from . import testStats
 from . import testAlphaSlider
 from . import testInteraction
 from . import testLegendSelector
 from . import testMaskToolsWidget
 from . import testScatterMaskToolsWidget
 from . import testPlotInteraction
-from . import testPlotTools
 from . import testPlotWidgetNoBackend
 from . import testPlotWidget
 from . import testPlotWindow
@@ -53,16 +50,21 @@ from . import testLimitConstraints
 from . import testComplexImageView
 from . import testImageView
 from . import testSaveAction
+from . import testScatterView
+from . import testPixelIntensityHistoAction
 
 
 def suite():
+    # Lazy-loading to avoid cyclic reference
+    from ..tools import test as testTools
+
     test_suite = unittest.TestSuite()
     test_suite.addTests(
         [test.suite(),
+         testTools.suite(),
          testColorBar.suite(),
-         testColors.suite(),
-         testColormapDialog.suite(),
          testCurvesROIWidget.suite(),
+         testStats.suite(),
          testAlphaSlider.suite(),
          testInteraction.suite(),
          testLegendSelector.suite(),
@@ -70,16 +72,17 @@ def suite():
          testScatterMaskToolsWidget.suite(),
          testPlotInteraction.suite(),
          testPlotWidgetNoBackend.suite(),
-         testPlotTools.suite(),
          testPlotWidget.suite(),
          testPlotWindow.suite(),
          testProfile.suite(),
          testStackView.suite(),
-         testColormap.suite(),
          testItem.suite(),
          testUtilsAxis.suite(),
          testLimitConstraints.suite(),
          testComplexImageView.suite(),
          testImageView.suite(),
-         testSaveAction.suite()])
+         testSaveAction.suite(),
+         testScatterView.suite(),
+         testPixelIntensityHistoAction.suite()
+        ])
     return test_suite
