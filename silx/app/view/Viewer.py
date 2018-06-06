@@ -173,7 +173,7 @@ class Viewer(qt.QMainWindow):
     def __expandAllSelected(self):
         """Expand all selected items of the tree.
 
-        The depth is fixed to avoid infinite loop with recurssive links.
+        The depth is fixed to avoid infinite loop with recursive links.
         """
         selection = self.__treeview.selectionModel()
         indexes = selection.selectedIndexes()
@@ -198,7 +198,7 @@ class Viewer(qt.QMainWindow):
     def __collapseAllSelected(self):
         """Collapse all selected items of the tree.
 
-        The depth is fixed to avoid infinite loop with recurssive links.
+        The depth is fixed to avoid infinite loop with recursive links.
         """
         selection = self.__treeview.selectionModel()
         indexes = selection.selectedIndexes()
