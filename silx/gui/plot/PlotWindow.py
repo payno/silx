@@ -29,7 +29,7 @@ The :class:`PlotWindow` is a subclass of :class:`.PlotWidget`.
 
 __authors__ = ["V.A. Sole", "T. Vincent"]
 __license__ = "MIT"
-__date__ = "26/04/2018"
+__date__ = "05/06/2018"
 
 import collections
 import logging
@@ -52,7 +52,7 @@ from .Profile import ProfileToolBar
 from .LegendSelector import LegendsDockWidget
 from .CurvesROIWidget import CurvesROIDockWidget
 from .MaskToolsWidget import MaskToolsDockWidget
-from .StatsWidget import StatsDockWidget
+from .StatsWidget import BasicStatsWidget
 from .ColorBar import ColorBarWidget
 try:
     from ..console import IPythonDockWidget
@@ -118,7 +118,7 @@ class PlotWindow(PlotWidget):
         self._curvesROIDockWidget = None
         self._maskToolsDockWidget = None
         self._consoleDockWidget = None
-        self._statsDockWidget = None
+        self._statsWidget = None
 
         # Create color bar, hidden by default for backward compatibility
         self._colorbar = ColorBarWidget(parent=self, plot=self)
@@ -342,7 +342,7 @@ class PlotWindow(PlotWidget):
         self._consoleDockWidget.setVisible(isChecked)
 
     def _toggleStatsVisibility(self, isChecked=False):
-        self.getStatsDockWidget().setVisible(isChecked)
+        self.getStatsWidget().parent().setVisible(isChecked)
 
     def _createToolBar(self, title, parent):
         """Create a QToolBar from the QAction of the PlotWindow.
@@ -490,13 +490,20 @@ class PlotWindow(PlotWidget):
             self.addTabbedDockWidget(self._maskToolsDockWidget)
         return self._maskToolsDockWidget
 
-    def getStatsDockWidget(self):
-        """DockWidget with Legend panel"""
-        if self._statsDockWidget is None:
-            self._statsDockWidget = StatsDockWidget(plot=self)
-            self._statsDockWidget.hide()
-            self.addTabbedDockWidget(self._statsDockWidget)
-        return self._statsDockWidget
+    def getStatsWidget(self):
+        """Returns a BasicStatsWidget connected to this plot
+
+        :rtype: BasicStatsWidget
+        """
+        if self._statsWidget is None:
+            dockWidget = qt.QDockWidget(parent=self)
+            dockWidget.setWindowTitle("Curves stats")
+            dockWidget.layout().setContentsMargins(0, 0, 0, 0)
+            self._statsWidget = BasicStatsWidget(parent=self, plot=self)
+            dockWidget.setWidget(self._statsWidget)
+            dockWidget.hide()
+            self.addTabbedDockWidget(dockWidget)
+        return self._statsWidget
 
     # getters for actions
     @property
@@ -585,6 +592,7 @@ class PlotWindow(PlotWidget):
         if self._statsAction is None:
             self._statsAction = qt.QAction('Curves stats', self)
             self._statsAction.setCheckable(True)
+            self._statsAction.setChecked(self.getStatsWidget().parent().isVisible())
             self._statsAction.toggled.connect(self._toggleStatsVisibility)
         return self._statsAction
 

@@ -27,7 +27,7 @@
 
 __authors__ = ["H. Payno"]
 __license__ = "MIT"
-__date__ = "07/03/2018"
+__date__ = "05/06/2018"
 
 
 import logging
@@ -72,7 +72,7 @@ class StatFormatter(object):
 
 class StatsHandler(object):
     """
-    Give 
+    Give
     create:
 
     * Stats object which will manage the statistic computation
@@ -95,7 +95,10 @@ class StatsHandler(object):
     def add(self, stat, formatter=None):
         assert isinstance(stat, statsmdl.StatBase)
         self.stats.add(stat)
-        self.formatters[stat.name] = formatter
+        _formatter = formatter
+        if type(_formatter) is str:
+            _formatter = StatFormatter(formatter=_formatter)
+        self.formatters[stat.name] = _formatter
 
     def format(self, name, val):
         """
@@ -148,7 +151,6 @@ class _StatHelper(object):
                 self.dealWithStatAndFormatter(arg)
             else:
                 _arg = arg
-                formatter = None
                 if isinstance(arg[0], tuple):
                     _arg = arg[0]
                     if len(arg) > 1:
@@ -163,7 +165,7 @@ class _StatHelper(object):
                              'argument can be associated with the '
                              'BaseStat (the `StatFormatter`')
         if len(arg) is 2:
-            assert isinstance(arg[1], (StatFormatter, type(None)))
+            assert isinstance(arg[1], (StatFormatter, type(None), str))
             self.statFormatter = arg[1]
 
     def createStatInstanceAndFormatter(self, arg):

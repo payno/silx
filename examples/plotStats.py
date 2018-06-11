@@ -39,15 +39,13 @@ On this example we will:
 
 __authors__ = ["H. Payno"]
 __license__ = "MIT"
-__date__ = "27/04/2018"
+__date__ = "06/06/2018"
 
 
 from silx.gui import qt
 from silx.gui.plot import Plot1D
 from silx.gui.plot.stats.stats import StatBase
-from silx.gui.plot.stats.statshandler import StatFormatter
 import numpy
-import numpy.random
 
 
 class Integral(StatBase):
@@ -67,7 +65,7 @@ class COM(StatBase):
     Compute data center of mass
     """
     def __init__(self):
-        StatBase.__init__(self, name='COM')
+        StatBase.__init__(self, name='COM', description="Center of mass")
 
     def calculate(self, context):
         if context.kind in ('curve', 'histogram'):
@@ -103,11 +101,13 @@ def main():
     stats = [
         ('sum', numpy.sum),
         Integral(),
-        (COM(), StatFormatter(formatter='{0:.2f}')),
+        (COM(), '{0:.2f}'),
     ]
 
-    plot.getStatsDockWidget().setStats(stats)
-    plot.getStatsDockWidget().setVisible(True)
+    plot.getStatsWidget().setStats(stats)
+    plot.getStatsWidget().parent().setVisible(True)
+    # Update the checkedbox cause we arre playing with the visibility
+    plot.getStatsAction().setChecked(True)
 
     plot.show()
     app.exec_()

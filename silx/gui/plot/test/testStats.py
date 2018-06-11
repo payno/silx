@@ -30,7 +30,7 @@ __date__ = "07/03/2018"
 
 
 from silx.gui import qt
-from silx.gui.plot import stats
+from silx.gui.plot.stats import stats
 from silx.gui.plot import StatsWidget
 from silx.gui.plot.stats import statshandler
 from silx.gui.test.utils import TestCaseQt
@@ -66,7 +66,7 @@ class TestStats(TestCaseQt):
         y = range(20)
         self.plot1d.addCurve(x, y, legend='curve0')
 
-        self.curveContext = stats.CurveContext(
+        self.curveContext = stats._CurveContext(
             item=self.plot1d.getCurve('curve0'),
             plot=self.plot1d,
             onlimits=False)
@@ -79,7 +79,7 @@ class TestStats(TestCaseQt):
         self.valuesScatterData = numpy.array([5, 6, 7, 10, 90, 20, 5])
         self.scatterPlot.addScatter(self.xScatterData, self.yScatterData,
                                     self.valuesScatterData, legend=lgd)
-        self.scatterContext = stats.ScatterContext(
+        self.scatterContext = stats._ScatterContext(
             item=self.scatterPlot.getScatter(lgd),
             plot=self.scatterPlot,
             onlimits=False
@@ -91,7 +91,7 @@ class TestStats(TestCaseQt):
         self.imageData = numpy.arange(32*128).reshape(32, 128)
         self.plot2d.addImage(data=self.imageData,
                              legend=lgd, replace=False)
-        self.imageContext = stats.ImageContext(
+        self.imageContext = stats._ImageContext(
             item=self.plot2d.getImage(lgd),
             plot=self.plot2d,
             onlimits=False
@@ -178,21 +178,21 @@ class TestStats(TestCaseQt):
         stat = stats.StatMin()
 
         self.plot1d.getXAxis().setLimitsConstraints(minPos=2, maxPos=5)
-        curveContextOnLimits = stats.CurveContext(
+        curveContextOnLimits = stats._CurveContext(
             item=self.plot1d.getCurve('curve0'),
             plot=self.plot1d,
             onlimits=True)
         self.assertTrue(stat.calculate(curveContextOnLimits) == 2)
 
         self.plot2d.getXAxis().setLimitsConstraints(minPos=32)
-        imageContextOnLimits = stats.ImageContext(
+        imageContextOnLimits = stats._ImageContext(
             item=self.plot2d.getImage('test image'),
             plot=self.plot2d,
             onlimits=True)
         self.assertTrue(stat.calculate(imageContextOnLimits) == 32)
 
         self.scatterPlot.getXAxis().setLimitsConstraints(minPos=40)
-        scatterContextOnLimits = stats.ScatterContext(
+        scatterContextOnLimits = stats._ScatterContext(
             item=self.scatterPlot.getScatter('scatter plot'),
             plot=self.scatterPlot,
             onlimits=True)
@@ -207,7 +207,7 @@ class TestStatsFormatter(TestCaseQt):
         y = range(20)
         self.plot1d.addCurve(x, y, legend='curve0')
 
-        self.curveContext = stats.CurveContext(
+        self.curveContext = stats._CurveContext(
             item=self.plot1d.getCurve('curve0'),
             plot=self.plot1d,
             onlimits=False)
@@ -339,8 +339,12 @@ class TestStatsWidgetWithCurves(TestCaseQt):
         self.widget.setStats(mystats)
 
     def tearDown(self):
-        del self.widget
-        del self.plot
+        self.plot.setAttribute(qt.Qt.WA_DeleteOnClose)
+        self.plot.close()
+        self.widget.setAttribute(qt.Qt.WA_DeleteOnClose)
+        self.widget.close()
+        self.widget = None
+        self.plot = None
         TestCaseQt.tearDown(self)
 
     def testInit(self):
@@ -386,6 +390,10 @@ class TestStatsWidgetWithCurves(TestCaseQt):
         plot2.addCurve(x=range(26), y=range(26), legend='new curve')
         self.widget.setPlot(plot2)
         self.assertTrue(self.widget.rowCount() is 1)
+        self.qapp.processEvents()
+        plot2.setAttribute(qt.Qt.WA_DeleteOnClose)
+        plot2.close()
+        plot2 = None
 
 
 class TestStatsWidgetWithImages(TestCaseQt):
@@ -413,8 +421,12 @@ class TestStatsWidgetWithImages(TestCaseQt):
         self.widget.setStats(mystats)
 
     def tearDown(self):
-        del self.widget
-        del self.plot
+        self.plot.setAttribute(qt.Qt.WA_DeleteOnClose)
+        self.plot.close()
+        self.widget.setAttribute(qt.Qt.WA_DeleteOnClose)
+        self.widget.close()
+        self.widget = None
+        self.plot = None
         TestCaseQt.tearDown(self)
 
     def test(self):
@@ -459,8 +471,12 @@ class TestStatsWidgetWithScatters(TestCaseQt):
         self.widget.setStats(mystats)
 
     def tearDown(self):
-        del self.widget
-        del self.scatterPlot
+        self.scatterPlot.setAttribute(qt.Qt.WA_DeleteOnClose)
+        self.scatterPlot.close()
+        self.widget.setAttribute(qt.Qt.WA_DeleteOnClose)
+        self.widget.close()
+        self.widget = None
+        self.scatterPlot = None
         TestCaseQt.tearDown(self)
 
     def testStats(self):
