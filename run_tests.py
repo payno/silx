@@ -76,7 +76,11 @@ def createBasicHandler():
 
 # Use an handler compatible with unittests, else use_buffer is not working
 logging.root.addHandler(createBasicHandler())
+
+# Capture all default warnings
 logging.captureWarnings(True)
+import warnings
+warnings.simplefilter('default')
 
 logger = logging.getLogger("run_tests")
 logger.setLevel(logging.WARNING)
@@ -377,7 +381,7 @@ parser.add_argument("-v", "--verbose", default=0,
                          "INFO messages. Use -vv for full verbosity, " +
                          "including debug messages and test help strings.")
 parser.add_argument("--qt-binding", dest="qt_binding", default=None,
-                    help="Force using a Qt binding, from 'PyQt4', 'PyQt5', or 'PySide'")
+                    help="Force using a Qt binding, from 'PyQt4', 'PyQt5', or 'PySide2'")
 if test_options is not None:
     test_options.add_parser_argument(parser)
 

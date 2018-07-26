@@ -204,7 +204,7 @@ def save1D(fname, x, y, xlabel=None, ylabels=None, filetype=None,
 
         # make sure y_array is a 2D array even for a single curve
         if len(y_array.shape) == 1:
-            y_array.shape = (1, y_array.shape[0])
+            y_array = y_array.reshape(1, y_array.shape[0])
         elif len(y_array.shape) > 2 or len(y_array.shape) < 1:
             raise IndexError("y must be a 1D or 2D array")
 
@@ -820,7 +820,7 @@ def get_data(url):
 
         if fabio_file.nframes == 1:
             if index != 0:
-                raise ValueError("Only a single frame availalbe. Slice %s out of range" % index)
+                raise ValueError("Only a single frame available. Slice %s out of range" % index)
             data = fabio_file.data
         else:
             data = fabio_file.getframe(index).data

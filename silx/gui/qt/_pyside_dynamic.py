@@ -39,11 +39,14 @@ from __future__ import (print_function, division, unicode_literals,
                         absolute_import)
 
 import logging
+import sys
 
-from PySide.QtCore import QMetaObject
-from PySide.QtUiTools import QUiLoader
-from PySide.QtGui import QMainWindow
-
+if "PySide.QtCore" in sys.modules:
+    from PySide.QtCore import QMetaObject
+    from PySide.QtUiTools import QUiLoader
+else:  # PySide2
+    from PySide2.QtCore import QMetaObject
+    from PySide2.QtUiTools import QUiLoader
 
 _logger = logging.getLogger(__name__)
 
@@ -57,7 +60,7 @@ class UiLoader(QUiLoader):
     create a new instance of the top-level widget, but creates the user
     interface in an existing instance of the top-level class.
 
-    This mimics the behaviour of :func:`PyQt4.uic.loadUi`.
+    This mimics the behaviour of :func:`PyQt*.uic.loadUi`.
     """
 
     def __init__(self, baseinstance, customWidgets=None):
@@ -113,7 +116,7 @@ class UiLoader(QUiLoader):
 
             if self.baseinstance:
                 # set an attribute for the new child widget on the base
-                # instance, just like PyQt4.uic.loadUi does.
+                # instance, just like PyQt*.uic.loadUi does.
                 setattr(self.baseinstance, name, widget)
 
                 # this outputs the various widget names, e.g.

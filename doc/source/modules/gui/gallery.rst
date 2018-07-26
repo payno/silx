@@ -189,7 +189,11 @@ Plotting widgets:
    * - .. image:: plot/img/ScatterView.png
           :height: 150px
           :align: center
-     - :class:`ScatterView` is a widget dedicated to visualize a scatter plot.
+     - :class:`CompareImages` is a widget dedicated to compare 2 images.
+   * - .. image:: plot/img/CompareImages.png
+          :height: 150px
+          :align: center
+     - :class:`CompareImages` is a widget dedicated to compare 2 images.
 
 Additional widgets:
 
@@ -214,6 +218,10 @@ Additional widgets:
           :align: center
      - :class:`.ColorBar.ColorBarWidget` display colormap gradient and can be linked with a plot
        to display the colormap
+   * - .. image:: plot/img/statsWidget.png
+          :height: 150px
+          :align: center
+     - :class:`.statsWidget.StatsWidget` display statistics on plot's items (curve, images...)
 
 .. _plot3d-gallery:
 

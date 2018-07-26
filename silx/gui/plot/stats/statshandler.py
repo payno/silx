@@ -1,7 +1,7 @@
 # coding: utf-8
 # /*##########################################################################
 #
-# Copyright (c) 2017 European Synchrotron Radiation Facility
+# Copyright (c) 2017-2018 European Synchrotron Radiation Facility
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -82,7 +82,7 @@ class StatsHandler(object):
                            If elements are given as a tuple, elements
                            should be (:class:`Stat`, formatter).
                            Otherwise should be :class:`Stat` elements.
-    :rtype: list or tuple
+    :rtype: List or tuple
     """
 
     def __init__(self, statFormatters):
@@ -114,7 +114,12 @@ class StatsHandler(object):
             if self.formatters[name] is None:
                 return str(val)
             else:
-                return self.formatters[name].format(val)
+                if isinstance(val, (tuple, list)):
+                    res = []
+                    [res.append(self.formatters[name].format(_val)) for _val in val]
+                    return ', '.join(res)
+                else:
+                    return self.formatters[name].format(val)
 
     def calculate(self, item, plot, onlimits):
         """

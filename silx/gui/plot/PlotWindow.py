@@ -29,7 +29,7 @@ The :class:`PlotWindow` is a subclass of :class:`.PlotWidget`.
 
 __authors__ = ["V.A. Sole", "T. Vincent"]
 __license__ = "MIT"
-__date__ = "05/06/2018"
+__date__ = "24/07/2018"
 
 import collections
 import logging
@@ -229,9 +229,11 @@ class PlotWindow(PlotWidget):
         gridLayout.addWidget(self._colorbar, 0, 1)
         gridLayout.setRowStretch(0, 1)
         gridLayout.setColumnStretch(0, 1)
-        centralWidget = qt.QWidget()
+        centralWidget = qt.QWidget(self)
         centralWidget.setLayout(gridLayout)
         self.setCentralWidget(centralWidget)
+
+        self._positionWidget = None
 
         if control or position:
             hbox = qt.QHBoxLayout()
@@ -255,14 +257,20 @@ class PlotWindow(PlotWidget):
                     converters = position
                 else:
                     converters = None
-                self.positionWidget = tools.PositionInfo(
+                self._positionWidget = tools.PositionInfo(
                     plot=self, converters=converters)
-                self.positionWidget.autoSnapToActiveCurve = True
+                # Set a snapping mode that is consistent with legacy one
+                self._positionWidget.setSnappingMode(
+                    tools.PositionInfo.SNAPPING_CROSSHAIR |
+                    tools.PositionInfo.SNAPPING_ACTIVE_ONLY |
+                    tools.PositionInfo.SNAPPING_SYMBOLS_ONLY |
+                    tools.PositionInfo.SNAPPING_CURVE |
+                    tools.PositionInfo.SNAPPING_SCATTER)
 
-                hbox.addWidget(self.positionWidget)
+                hbox.addWidget(self._positionWidget)
 
             hbox.addStretch(1)
-            bottomBar = qt.QWidget()
+            bottomBar = qt.QWidget(centralWidget)
             bottomBar.setLayout(hbox)
 
             gridLayout.addWidget(bottomBar, 1, 0, 1, -1)
@@ -299,6 +307,18 @@ class PlotWindow(PlotWidget):
         :rtype: QToolBar
         """
         return self._outputToolBar
+
+    @property
+    @deprecated(replacement="getPositionInfoWidget()", since_version="0.8.0")
+    def positionWidget(self):
+        return self.getPositionInfoWidget()
+
+    def getPositionInfoWidget(self):
+        """Returns the widget displaying current cursor position information
+
+        :rtype: ~silx.gui.plot.tools.PositionInfo
+        """
+        return self._positionWidget
 
     def getSelectionMask(self):
         """Return the current mask handled by :attr:`maskToolsDockWidget`.
@@ -419,7 +439,7 @@ class PlotWindow(PlotWidget):
             # The first created dock widget must be added to a Widget area
             width = self.centralWidget().width()
             height = self.centralWidget().height()
-            if width > (2.0 * height) and width > 1000:
+            if width > (1.25 * height):
                 area = qt.Qt.RightDockWidgetArea
             else:
                 area = qt.Qt.BottomDockWidgetArea
@@ -500,6 +520,7 @@ class PlotWindow(PlotWidget):
             dockWidget.setWindowTitle("Curves stats")
             dockWidget.layout().setContentsMargins(0, 0, 0, 0)
             self._statsWidget = BasicStatsWidget(parent=self, plot=self)
+            self._statsWidget.sigVisibilityChanged.connect(self.getStatsAction().setChecked)
             dockWidget.setWidget(self._statsWidget)
             dockWidget.hide()
             self.addTabbedDockWidget(dockWidget)
@@ -837,6 +858,37 @@ class Plot2D(PlotWindow):
         for action in actions:
             if action is self.getColormapAction():
                 break
+
+        self.sigActiveImageChanged.connect(self.__activeImageChanged)
+
+    def __activeImageChanged(self, previous, legend):
+        """Handle change of active image
+
+        :param Union[str,None] previous: Legend of previous active image
+        :param Union[str,None] legend: Legend of current active image
+        """
+        if previous is not None:
+            item = self.getImage(previous)
+            if item is not None:
+                item.sigItemChanged.disconnect(self.__imageChanged)
+
+        if legend is not None:
+            item = self.getImage(legend)
+            item.sigItemChanged.connect(self.__imageChanged)
+
+        positionInfo = self.getPositionInfoWidget()
+        if positionInfo is not None:
+            positionInfo.updateInfo()
+
+    def __imageChanged(self, event):
+        """Handle update of active image item
+
+        :param event: Type of changed event
+        """
+        if event == items.ItemChangedType.DATA:
+            positionInfo = self.getPositionInfoWidget()
+            if positionInfo is not None:
+                positionInfo.updateInfo()
 
     def _getImageValue(self, x, y):
         """Get status bar value of top most image at position (x, y)

@@ -35,6 +35,8 @@ import logging
 import datetime as dt
 import numpy
 
+from pkg_resources import parse_version as _parse_version
+
 
 _logger = logging.getLogger(__name__)
 
@@ -222,6 +224,7 @@ class BackendMatplotlib(BackendBase.BackendBase):
         # when getting the limits at the expense of a replot
         self._dirtyLimits = True
         self._axesDisplayed = True
+        self._matplotlibVersion = _parse_version(matplotlib.__version__)
 
         self.fig = Figure()
         self.fig.set_facecolor("w")
@@ -245,7 +248,7 @@ class BackendMatplotlib(BackendBase.BackendBase):
         self.ax2.set_autoscaley_on(True)
         self.ax.set_zorder(1)
         # this works but the figure color is left
-        if matplotlib.__version__[0] < '2':
+        if self._matplotlibVersion < _parse_version('2'):
             self.ax.set_axis_bgcolor('none')
         else:
             self.ax.set_facecolor('none')
@@ -257,7 +260,6 @@ class BackendMatplotlib(BackendBase.BackendBase):
         self._colormaps = {}
 
         self._graphCursor = tuple()
-        self.matplotlibVersion = matplotlib.__version__
 
         self._enableAxis('right', False)
         self._isXAxisTimeSeries = False
@@ -379,7 +381,7 @@ class BackendMatplotlib(BackendBase.BackendBase):
         # No transparent colormap with matplotlib < 1.2.0
         # Add support for transparent colormap for uint8 data with
         # colormap with 256 colors, linear norm, [0, 255] range
-        if matplotlib.__version__ < '1.2.0':
+        if self._matplotlibVersion < _parse_version('1.2.0'):
             if (len(data.shape) == 2 and colormap.getName() is None and
                     colormap.getColormapLUT() is not None):
                 colors = colormap.getColormapLUT()
@@ -437,7 +439,7 @@ class BackendMatplotlib(BackendBase.BackendBase):
             ystep = 1 if scale[1] >= 0. else -1
             data = data[::ystep, ::xstep]
 
-        if matplotlib.__version__ < "2.1":
+        if self._matplotlibVersion < _parse_version('2.1'):
             # matplotlib 1.4.2 do not support float128
             dtype = data.dtype
             if dtype.kind == "f" and dtype.itemsize >= 16:
@@ -784,7 +786,7 @@ class BackendMatplotlib(BackendBase.BackendBase):
         # Workaround for matplotlib 2.1.0 when one tries to set an axis
         # to log scale with both limits <= 0
         # In this case a draw with positive limits is needed first
-        if flag and matplotlib.__version__ >= '2.1.0':
+        if flag and self._matplotlibVersion >= _parse_version('2.1.0'):
             xlim = self.ax.get_xlim()
             if xlim[0] <= 0 and xlim[1] <= 0:
                 self.ax.set_xlim(1, 10)
@@ -796,7 +798,7 @@ class BackendMatplotlib(BackendBase.BackendBase):
     def setYAxisLogarithmic(self, flag):
         # Workaround for matplotlib 2.0 issue with negative bounds
         # before switching to log scale
-        if flag and matplotlib.__version__ >= '2.0.0':
+        if flag and self._matplotlibVersion >= _parse_version('2.0.0'):
             redraw = False
             for axis, dataRangeIndex in ((self.ax, 1), (self.ax2, 2)):
                 ylim = axis.get_ylim()
@@ -833,15 +835,30 @@ class BackendMatplotlib(BackendBase.BackendBase):
 
     # Data <-> Pixel coordinates conversion
 
+    def _mplQtYAxisCoordConversion(self, y):
+        """Qt origin (top) to/from matplotlib origin (bottom) conversion.
+
+        :rtype: float
+        """
+        height = self.fig.get_window_extent().height
+        return height - y
+
     def dataToPixel(self, x, y, axis):
         ax = self.ax2 if axis == "right" else self.ax
 
         pixels = ax.transData.transform_point((x, y))
         xPixel, yPixel = pixels.T
+
+        # Convert from matplotlib origin (bottom) to Qt origin (top)
+        yPixel = self._mplQtYAxisCoordConversion(yPixel)
+
         return xPixel, yPixel
 
     def pixelToData(self, x, y, axis, check):
         ax = self.ax2 if axis == "right" else self.ax
+
+        # Convert from Qt origin (top) to matplotlib origin (bottom)
+        y = self._mplQtYAxisCoordConversion(y)
 
         inv = ax.transData.inverted()
         x, y = inv.transform_point((x, y))
@@ -856,12 +873,12 @@ class BackendMatplotlib(BackendBase.BackendBase):
         return x, y
 
     def getPlotBoundsInPixels(self):
-        bbox = self.ax.get_window_extent().transformed(
-            self.fig.dpi_scale_trans.inverted())
-        dpi = self.fig.dpi
+        bbox = self.ax.get_window_extent()
         # Warning this is not returning int...
-        return (bbox.bounds[0] * dpi, bbox.bounds[1] * dpi,
-                bbox.bounds[2] * dpi, bbox.bounds[3] * dpi)
+        return (bbox.xmin,
+                self._mplQtYAxisCoordConversion(bbox.ymax),
+                bbox.width,
+                bbox.height)
 
     def setAxesDisplayed(self, displayed):
         """Display or not the axes.
@@ -933,7 +950,8 @@ class BackendMatplotlibQt(FigureCanvasQTAgg, BackendMatplotlib):
 
     def _onMousePress(self, event):
         self._plot.onMousePress(
-            event.x, event.y, self._MPL_TO_PLOT_BUTTONS[event.button])
+            event.x, self._mplQtYAxisCoordConversion(event.y),
+            self._MPL_TO_PLOT_BUTTONS[event.button])
 
     def _onMouseMove(self, event):
         if self._graphCursor:
@@ -950,14 +968,17 @@ class BackendMatplotlibQt(FigureCanvasQTAgg, BackendMatplotlib):
                 self._plot._setDirtyPlot(overlayOnly=True)
             # onMouseMove must trigger replot if dirty flag is raised
 
-        self._plot.onMouseMove(event.x, event.y)
+        self._plot.onMouseMove(
+            event.x, self._mplQtYAxisCoordConversion(event.y))
 
     def _onMouseRelease(self, event):
         self._plot.onMouseRelease(
-            event.x, event.y, self._MPL_TO_PLOT_BUTTONS[event.button])
+            event.x, self._mplQtYAxisCoordConversion(event.y),
+            self._MPL_TO_PLOT_BUTTONS[event.button])
 
     def _onMouseWheel(self, event):
-        self._plot.onMouseWheel(event.x, event.y, event.step)
+        self._plot.onMouseWheel(
+            event.x, self._mplQtYAxisCoordConversion(event.y), event.step)
 
     def leaveEvent(self, event):
         """QWidget event handler"""
@@ -991,7 +1012,8 @@ class BackendMatplotlibQt(FigureCanvasQTAgg, BackendMatplotlib):
         self._picked = []
 
         # Weird way to do an explicit picking: Simulate a button press event
-        mouseEvent = MouseEvent('button_press_event', self, x, y)
+        mouseEvent = MouseEvent('button_press_event',
+                                self, x, self._mplQtYAxisCoordConversion(y))
         cid = self.mpl_connect('pick_event', self._onPick)
         self.fig.pick(mouseEvent)
         self.mpl_disconnect(cid)
@@ -1035,7 +1057,7 @@ class BackendMatplotlibQt(FigureCanvasQTAgg, BackendMatplotlib):
         """
         # Starting with mpl 2.1.0, toggling autoscale raises a ValueError
         # in some situations. See #1081, #1136, #1163,
-        if matplotlib.__version__ >= "2.0.0":
+        if self._matplotlibVersion >= _parse_version("2.0.0"):
             try:
                 FigureCanvasQTAgg.draw(self)
             except ValueError as err:
@@ -1067,7 +1089,6 @@ class BackendMatplotlibQt(FigureCanvasQTAgg, BackendMatplotlib):
             if yRightLimits != self.ax2.get_ybound():
                 self._plot.getYAxis(axis='right')._emitLimitsChanged()
 
-
         self._drawOverlays()
 
     def replot(self):
@@ -1086,6 +1107,12 @@ class BackendMatplotlibQt(FigureCanvasQTAgg, BackendMatplotlib):
         elif dirtyFlag:  # Need full redraw
             self.draw()
 
+        # Workaround issue of rendering overlays with some matplotlib versions
+        if (_parse_version('1.5') <= self._matplotlibVersion < _parse_version('2.1') and
+                not hasattr(self, '_firstReplot')):
+            self._firstReplot = False
+            if self._overlays or self._graphCursor:
+                qt.QTimer.singleShot(0, self.draw)  # Request async draw
 
     # cursor
 
