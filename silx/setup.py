@@ -25,7 +25,7 @@
 
 __authors__ = ["T. Vincent"]
 __license__ = "MIT"
-__date__ = "30/03/2017"
+__date__ = "26/07/2018"
 
 from numpy.distutils.misc_util import Configuration
 
@@ -44,6 +44,7 @@ def configuration(parent_package='', top_path=None):
     config.add_subpackage('third_party')
     config.add_subpackage('utils')
     config.add_subpackage('app')
+    config.add_subpackage("examples", "../examples")
 
     return config
 
