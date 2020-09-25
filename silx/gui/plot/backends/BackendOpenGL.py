@@ -403,8 +403,7 @@ class BackendOpenGL(BackendBase.BackendBase, glu.OpenGLWidget):
             gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_STENCIL_BUFFER_BIT)
 
             # Check if window is large enough
-            plotWidth, plotHeight = self.getPlotBoundsInPixels()[2:]
-            if plotWidth <= 2 or plotHeight <= 2:
+            if self._plotFrame.plotSize <= (2, 2):
                 return
 
             # Sync plot frame with window
@@ -422,7 +421,7 @@ class BackendOpenGL(BackendBase.BackendBase, glu.OpenGLWidget):
             True to render items that are overlays.
         """
         # Values that are often used
-        plotWidth, plotHeight = self.getPlotBoundsInPixels()[2:]
+        plotWidth, plotHeight = self._plotFrame.plotSize
         isXLog = self._plotFrame.xAxis.isLog
         isYLog = self._plotFrame.yAxis.isLog
         isYInverted = self._plotFrame.isYAxisInverted
@@ -613,7 +612,7 @@ class BackendOpenGL(BackendBase.BackendBase, glu.OpenGLWidget):
 
     def _renderOverlayGL(self):
         """Render overlay layer: overlay items and crosshair."""
-        plotWidth, plotHeight = self.getPlotBoundsInPixels()[2:]
+        plotWidth, plotHeight = self._plotFrame.plotSize
 
         # Scissor to plot area
         gl.glScissor(self._plotFrame.margins.left,
@@ -666,7 +665,7 @@ class BackendOpenGL(BackendBase.BackendBase, glu.OpenGLWidget):
 
         It renders the background, grid and items except overlays
         """
-        plotWidth, plotHeight = self.getPlotBoundsInPixels()[2:]
+        plotWidth, plotHeight = self._plotFrame.plotSize
 
         gl.glScissor(self._plotFrame.margins.left,
                      self._plotFrame.margins.bottom,
@@ -1212,8 +1211,7 @@ class BackendOpenGL(BackendBase.BackendBase, glu.OpenGLWidget):
         :param str keepDim: The dimension to maintain: 'x', 'y' or None.
             If None (the default), the dimension with the largest range.
         """
-        plotWidth, plotHeight = self.getPlotBoundsInPixels()[2:]
-        if plotWidth <= 2 or plotHeight <= 2:
+        if self._plotFrame.plotSize <= (2, 2):
             return
 
         if keepDim is None:
@@ -1361,7 +1359,9 @@ class BackendOpenGL(BackendBase.BackendBase, glu.OpenGLWidget):
         return self._plotFrame.pixelToData(x, y, axis)
 
     def getPlotBoundsInPixels(self):
-        return self._plotFrame.plotOrigin + self._plotFrame.plotSize
+        devicePixelRatio = self.getDevicePixelRatio()
+        return tuple(int(value / devicePixelRatio)
+            for value in self._plotFrame.plotOrigin + self._plotFrame.plotSize)
 
     def setAxesMargins(self, left: float, top: float, right: float, bottom: float):
         self._plotFrame.marginRatios = left, top, right, bottom
