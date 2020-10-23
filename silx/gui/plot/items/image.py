@@ -387,10 +387,10 @@ class ImageData(ImageBase, ColormapMixIn):
         minX, maxX = roi_origin[0], roi_origin[0] + roi_size[0]
         minY, maxY = roi_origin[1], roi_origin[1] + roi_size[1]
 
-        XMinBound = int(minX)
-        YMinBound = int(minY)
-        XMaxBound = int(maxX)
-        YMaxBound = int(maxY)
+        XMinBound = int(minX * self.getScale()[0])
+        YMinBound = int(minY * self.getScale()[1])
+        XMaxBound = int(maxX * self.getScale()[0])
+        YMaxBound = int(maxY * self.getScale()[1])
 
         XMinBound = max(XMinBound, 0)
         YMinBound = max(YMinBound, 0)
