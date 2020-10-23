@@ -1068,14 +1068,17 @@ class ColormapDialog(qt.QDialog):
                                            AutoscaleMethod.ROI):
             rectangle_roi_origin = numpy.array(
                 self._getRoiForColormapRange().getOrigin())
-            item_data_origin = numpy.array(self._getItem().getOrigin())
+            if hasattr(self._getItem(), 'getOrigin'):
+                origin = self._getItem().getOrigin()
+            else:
+                origin = (0, 0)
+            item_data_origin = numpy.array(origin)
 
             self._getItem()._setROIForAutoscale(
                 roi=Rectangle(
                     origin=rectangle_roi_origin - item_data_origin,
                     size=self._getRoiForColormapRange().getSize(),
                 ),
-                scale=self._getItem().getScale()
             )
         else:
             raise ValueError('Method {} is not managed'.format(method))

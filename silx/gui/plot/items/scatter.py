@@ -487,7 +487,7 @@ class Scatter(PointsBase, ColormapMixIn, ScatterVisualizationMixIn):
         """Update backend renderer"""
         # Filter-out values <= 0
         xFiltered, yFiltered, valueFiltered, xerror, yerror = self.getData(
-            copy=False, displayed=True)
+            copy=False, displayed=True, roi_filtered=True)
 
         # Remove not finite numbers (this includes filtered out x, y <= 0)
         mask = numpy.logical_and(numpy.isfinite(xFiltered), numpy.isfinite(yFiltered))
@@ -522,7 +522,7 @@ class Scatter(PointsBase, ColormapMixIn, ScatterVisualizationMixIn):
 
         # Compute colors
         cmap = self.getColormap()
-        rgbacolors = cmap.applyToData(self)
+        rgbacolors = cmap.applyToData(data=valueFiltered)
 
         if self.__alpha is not None:
             rgbacolors[:, -1] = (rgbacolors[:, -1] * self.__alpha).astype(numpy.uint8)
@@ -886,7 +886,7 @@ class Scatter(PointsBase, ColormapMixIn, ScatterVisualizationMixIn):
         """
         return numpy.array(self.__alpha, copy=copy)
 
-    def getData(self, copy=True, displayed=False):
+    def getData(self, copy=True, displayed=False, roi_filtered=False):
         """Returns the x, y coordinates and the value of the data points
 
         :param copy: True (Default) to get a copy,
@@ -904,11 +904,43 @@ class Scatter(PointsBase, ColormapMixIn, ScatterVisualizationMixIn):
                 assert len(data) == 5
                 return data
 
-        return (self.getXData(copy),
-                self.getYData(copy),
-                self.getValueData(copy),
-                self.getXErrorData(copy),
-                self.getYErrorData(copy))
+        if roi_filtered is True and self._roiForAutoscale is not None:
+            roi = self._roiForAutoscale
+            roi_origin = roi.origin
+            roi_size = roi.size
+
+            valueData = self.getValueData(copy=copy)
+            xData = self.getXData(copy=copy)
+            yData = self.getYData(copy=copy)
+            xErrorData = self.getXErrorData(copy=copy)
+            yErrorData = self.getYErrorData(copy=copy)
+
+            minX, maxX = roi_origin[0], roi_origin[0] + roi_size[0]
+            minY, maxY = roi_origin[1], roi_origin[1] + roi_size[1]
+
+            # filter on X axis
+            valueData = valueData[(minX <= xData) & (xData <= maxX)]
+            yData = yData[(minX <= xData) & (xData <= maxX)]
+            xData = xData[(minX <= xData) & (xData <= maxX)]
+            if xErrorData is not None:
+                xErrorData = xErrorData[(minX <= xData) & (xData <= maxX)]
+            if yErrorData is not None:
+                yErrorData = yErrorData[(minX <= xData) & (xData <= maxX)]
+            # filter on Y axis
+            return (
+                xData,
+                yData,
+                valueData,
+                xErrorData,
+                yErrorData,
+            )
+        else:
+            return (self.getXData(copy),
+                    self.getYData(copy),
+                    self.getValueData(copy),
+                    self.getXErrorData(copy),
+                    self.getYErrorData(copy)
+                    )
 
     # reimplemented from PointsBase to handle `value`
     def setData(self, x, y, value, xerror=None, yerror=None, alpha=None, copy=True):
@@ -965,3 +997,33 @@ class Scatter(PointsBase, ColormapMixIn, ScatterVisualizationMixIn):
 
         # call self._updated + plot._invalidateDataRange()
         PointsBase.setData(self, x, y, xerror, yerror, copy)
+
+    def _filter_data(self, raw_data):
+        if self._roiForAutoscale is None:
+            return raw_data
+
+        roi = self._roiForAutoscale
+        roi_origin = roi.origin
+        roi_size = roi.size
+
+        valueData = self.getValueData(copy=True)
+        xData = self.getXData(copy=True)
+        yData = self.getYData(copy=True)
+
+        minX, maxX = roi_origin[0], roi_origin[0] + roi_size[0]
+        minY, maxY = roi_origin[1], roi_origin[1] + roi_size[1]
+
+        # filter on X axis
+        valueData = valueData[(minX <= xData) & (xData <= maxX)]
+        yData = yData[(minX <= xData) & (xData <= maxX)]
+        xData = xData[(minX <= xData) & (xData <= maxX)]
+        # filter on Y axis
+        valueData = valueData[(minY <= yData) & (yData <= maxY)]
+        # xData = xData[(minY <= yData) & (yData <= maxY)]
+        # yData = yData[(minY <= yData) & (yData <= maxY)]
+
+        return valueData
+        # return (xData, yData, valueData)
+        # self.data = (xData, yData, valueData)
+        # self.values = valueData
+        # self.axes = (xData, yData)
